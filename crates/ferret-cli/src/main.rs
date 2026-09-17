@@ -88,10 +88,10 @@ fn cmd_scan(letter: char, options: ScanOptions) -> io::Result<()> {
 
     println!();
     println!("Ornek yollar:");
-    for (position, entry) in index.entries().iter().enumerate().filter(|(_, e)| !e.is_dir).take(5) {
+    for (position, entry) in index.entries().iter().enumerate().filter(|(_, e)| !e.is_dir()).take(5) {
         match index.full_path(position) {
             Some(path) => println!("  {path}  ({})", human_size(entry.size)),
-            None => println!("  <yol kurulamadi> {}", entry.name),
+            None => println!("  <yol kurulamadi> {}", index.name(position)),
         }
     }
 
@@ -116,9 +116,9 @@ fn cmd_find(letter: char, needle: &str, options: ScanOptions) -> io::Result<()> 
     for hit in hits.iter().take(20) {
         let entry = &index.entries()[*hit as usize];
         match index.full_path(*hit as usize) {
-            Some(path) if entry.is_dir => println!("  [klasor] {path}"),
+            Some(path) if entry.is_dir() => println!("  [klasor] {path}"),
             Some(path) => println!("  {path}  ({})", human_size(entry.size)),
-            None => println!("  <yol kurulamadi> {}", entry.name),
+            None => println!("  <yol kurulamadi> {}", index.name(*hit as usize)),
         }
     }
     if hits.len() > 20 {
@@ -185,9 +185,13 @@ fn print_summary(index: &Index) {
     if s.records_system > 0 {
         println!("  (atlanan sistem : {})", s.records_system);
     }
+    if s.records_orphaned > 0 {
+        println!("  (yolsuz kayit   : {})", s.records_orphaned);
+    }
     if s.records_damaged > 0 {
         println!("Atlanan (bozuk)   : {}", s.records_damaged);
     }
+    println!("Bellek            : {}", human_size(index.memory_bytes() as u64));
     println!("Disk okuma suresi : {:.2} sn", s.read_time.as_secs_f64());
     println!("Tarama suresi     : {:.2} sn", s.total_time.as_secs_f64());
     if s.total_time.as_secs_f64() > 0.0 {

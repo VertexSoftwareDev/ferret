@@ -19,9 +19,15 @@ pub const FLAG_IN_USE: u16 = 0x0001;
 /// Record header flag: the record describes a directory.
 pub const FLAG_DIRECTORY: u16 = 0x0002;
 
+pub const ATTR_STANDARD_INFO: u32 = 0x10;
 pub const ATTR_FILE_NAME: u32 = 0x30;
 pub const ATTR_DATA: u32 = 0x80;
 const ATTR_END: u32 = 0xFFFF_FFFF;
+
+/// DOS attribute bits stored in `$STANDARD_INFORMATION`.
+const DOS_READONLY: u32 = 0x0001;
+const DOS_HIDDEN: u32 = 0x0002;
+const DOS_SYSTEM: u32 = 0x0004;
 
 mod hdr {
     pub const USA_OFFSET: usize = 0x04;
@@ -226,6 +232,46 @@ pub struct FileName {
     pub real_size: u64,
 }
 
+/// The parts of `$STANDARD_INFORMATION` that Ferret indexes.
+///
+/// `$FILE_NAME` carries timestamps too, but Windows does not keep those in step
+/// with reality — the authoritative "date modified" a user recognises lives
+/// here.
+#[derive(Debug, Clone, Copy)]
+pub struct StandardInfo {
+    pub created: u64,
+    pub modified: u64,
+    pub dos_attributes: u32,
+}
+
+impl StandardInfo {
+    /// Translate the DOS attribute bits into [`crate::mft`] entry flags.
+    pub fn flags(&self) -> u16 {
+        let mut flags = 0u16;
+        if self.dos_attributes & DOS_HIDDEN != 0 {
+            flags |= crate::mft::IS_HIDDEN;
+        }
+        if self.dos_attributes & DOS_SYSTEM != 0 {
+            flags |= crate::mft::IS_SYSTEM;
+        }
+        if self.dos_attributes & DOS_READONLY != 0 {
+            flags |= crate::mft::IS_READONLY;
+        }
+        flags
+    }
+}
+
+pub fn parse_standard_info(value: &[u8]) -> Option<StandardInfo> {
+    if value.len() < 0x24 {
+        return None;
+    }
+    Some(StandardInfo {
+        created: u64le(value, 0x00),
+        modified: u64le(value, 0x08),
+        dos_attributes: u32le(value, 0x20),
+    })
+}
+
 pub fn parse_file_name(value: &[u8]) -> Option<FileName> {
     if value.len() < 0x42 {
         return None;
@@ -309,6 +355,24 @@ mod tests {
         assert_eq!(parsed.namespace, Namespace::Win32);
         assert_eq!(parsed.real_size, 16);
         assert!(parsed.namespace.is_preferred());
+    }
+
+    #[test]
+    fn parses_standard_information() {
+        let mut value = vec![0u8; 0x30];
+        value[0x08..0x10].copy_from_slice(&126_227_808_000_000_000u64.to_le_bytes());
+        value[0x20..0x24].copy_from_slice(&(DOS_HIDDEN | DOS_SYSTEM).to_le_bytes());
+
+        let info = parse_standard_info(&value).expect("should parse");
+        assert_eq!(info.modified, 126_227_808_000_000_000);
+        assert!(info.flags() & crate::mft::IS_HIDDEN != 0);
+        assert!(info.flags() & crate::mft::IS_SYSTEM != 0);
+        assert!(info.flags() & crate::mft::IS_READONLY == 0);
+    }
+
+    #[test]
+    fn a_truncated_standard_information_is_rejected() {
+        assert!(parse_standard_info(&[0u8; 8]).is_none());
     }
 
     #[test]
