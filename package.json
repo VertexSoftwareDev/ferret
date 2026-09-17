@@ -1,0 +1,14 @@
+{
+  "name": "ferret",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Build tooling for the Ferret desktop application.",
+  "scripts": {
+    "icons": "node scripts/make-icons.js",
+    "dev": "tauri dev --config crates/ferret-app/tauri.conf.json",
+    "bundle": "tauri build --config crates/ferret-app/tauri.conf.json"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}
