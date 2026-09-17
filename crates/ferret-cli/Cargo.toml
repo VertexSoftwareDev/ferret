@@ -1,0 +1,13 @@
+[package]
+name = "ferret-cli"
+description = "Command-line harness for the Ferret file index."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "ferret"
+path = "src/main.rs"
+
+[dependencies]
+ferret-core = { path = "../ferret-core" }

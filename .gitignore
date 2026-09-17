@@ -1,0 +1,7 @@
+/target
+**/*.rs.bk
+*.pdb
+
+# Tauri / frontend (ileride)
+node_modules/
+dist/
