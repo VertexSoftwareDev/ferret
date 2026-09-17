@@ -90,7 +90,11 @@ mod tests {
         // 2001-01-01T00:00:00Z
         assert_eq!(timestamp(126_227_808_000_000_000), "2001-01-01 00:00");
         // 2024-02-29T13:45:00Z — a leap day, which is where naive date code breaks.
-        assert_eq!(timestamp(133_527_675_000_000_000), "2024-02-29 13:45");
+        assert_eq!(timestamp(133_536_879_000_000_000), "2024-02-29 13:45");
+        // 2023-03-01T00:00:00Z — the day after February in a non-leap year.
+        assert_eq!(timestamp(133_221_024_000_000_000), "2023-03-01 00:00");
+        // 2000-02-29T23:59:00Z — a century leap year, the other classic trap.
+        assert_eq!(timestamp(125_963_423_400_000_000), "2000-02-29 23:59");
         // Never set.
         assert_eq!(timestamp(0), "");
     }

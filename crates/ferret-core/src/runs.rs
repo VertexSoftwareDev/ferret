@@ -51,7 +51,10 @@ pub fn parse_runs(buf: &[u8]) -> Vec<Run> {
 
         if off_size == 0 {
             // No offset field: a sparse run, i.e. a hole with no storage.
-            runs.push(Run { lcn: None, clusters });
+            runs.push(Run {
+                lcn: None,
+                clusters,
+            });
             continue;
         }
 
@@ -66,7 +69,10 @@ pub fn parse_runs(buf: &[u8]) -> Vec<Run> {
         if lcn < 0 {
             break; // would point outside the volume
         }
-        runs.push(Run { lcn: Some(lcn as u64), clusters });
+        runs.push(Run {
+            lcn: Some(lcn as u64),
+            clusters,
+        });
     }
 
     runs
@@ -109,7 +115,10 @@ mod tests {
         let buf = [0x21, 0x18, 0x33, 0x02, 0x00];
         assert_eq!(
             parse_runs(&buf),
-            vec![Run { lcn: Some(0x0233), clusters: 0x18 }]
+            vec![Run {
+                lcn: Some(0x0233),
+                clusters: 0x18
+            }]
         );
     }
 
@@ -124,8 +133,14 @@ mod tests {
         assert_eq!(
             parse_runs(&buf),
             vec![
-                Run { lcn: Some(0x60), clusters: 0x10 },
-                Run { lcn: Some(0x40), clusters: 0x08 },
+                Run {
+                    lcn: Some(0x60),
+                    clusters: 0x10
+                },
+                Run {
+                    lcn: Some(0x40),
+                    clusters: 0x08
+                },
             ]
         );
     }
@@ -133,7 +148,13 @@ mod tests {
     #[test]
     fn zero_offset_field_means_sparse() {
         let buf = [0x01, 0x05, 0x00];
-        assert_eq!(parse_runs(&buf), vec![Run { lcn: None, clusters: 5 }]);
+        assert_eq!(
+            parse_runs(&buf),
+            vec![Run {
+                lcn: None,
+                clusters: 5
+            }]
+        );
     }
 
     #[test]
@@ -142,15 +163,24 @@ mod tests {
         let buf = [0x11, 0x10, 0x60, 0x21, 0x08, 0x33];
         assert_eq!(
             parse_runs(&buf),
-            vec![Run { lcn: Some(0x60), clusters: 0x10 }]
+            vec![Run {
+                lcn: Some(0x60),
+                clusters: 0x10
+            }]
         );
     }
 
     #[test]
     fn sums_clusters() {
         let runs = [
-            Run { lcn: Some(0), clusters: 3 },
-            Run { lcn: None, clusters: 4 },
+            Run {
+                lcn: Some(0),
+                clusters: 3,
+            },
+            Run {
+                lcn: None,
+                clusters: 4,
+            },
         ];
         assert_eq!(total_clusters(&runs), 7);
     }

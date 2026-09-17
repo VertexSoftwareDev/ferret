@@ -171,7 +171,9 @@ impl SearchIndex {
         let threads = if self.starts.len() < PARALLEL_THRESHOLD {
             1
         } else {
-            thread::available_parallelism().map(|n| n.get()).unwrap_or(1)
+            thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(1)
         };
 
         if threads <= 1 {
@@ -385,8 +387,14 @@ mod tests {
         let index = index_from_names(&["Rapor.pdf", "notlar.txt", "RAPORLAR", "foto.jpg"]);
         let search = SearchIndex::build(&index);
 
-        assert_eq!(names_of(&index, &search.search("rapor")), vec!["Rapor.pdf", "RAPORLAR"]);
-        assert_eq!(names_of(&index, &search.search("RAPOR")), vec!["Rapor.pdf", "RAPORLAR"]);
+        assert_eq!(
+            names_of(&index, &search.search("rapor")),
+            vec!["Rapor.pdf", "RAPORLAR"]
+        );
+        assert_eq!(
+            names_of(&index, &search.search("RAPOR")),
+            vec!["Rapor.pdf", "RAPORLAR"]
+        );
         assert_eq!(names_of(&index, &search.search(".txt")), vec!["notlar.txt"]);
     }
 
@@ -423,8 +431,14 @@ mod tests {
     fn handles_non_ascii_names() {
         let index = index_from_names(&["Çalışma Raporu.docx", "Ödeme.xlsx"]);
         let search = SearchIndex::build(&index);
-        assert_eq!(names_of(&index, &search.search("raporu")), vec!["Çalışma Raporu.docx"]);
-        assert_eq!(names_of(&index, &search.search("ödeme")), vec!["Ödeme.xlsx"]);
+        assert_eq!(
+            names_of(&index, &search.search("raporu")),
+            vec!["Çalışma Raporu.docx"]
+        );
+        assert_eq!(
+            names_of(&index, &search.search("ödeme")),
+            vec!["Ödeme.xlsx"]
+        );
     }
 
     #[test]
@@ -450,7 +464,10 @@ mod tests {
         let parallel = search.search("file_1");
         let serial = search.search_range("file_1", 0, search.len());
         assert_eq!(parallel, serial);
-        assert!(parallel.windows(2).all(|w| w[0] < w[1]), "hits must stay ordered");
+        assert!(
+            parallel.windows(2).all(|w| w[0] < w[1]),
+            "hits must stay ordered"
+        );
     }
 
     fn sample_tree() -> Index {
@@ -470,42 +487,83 @@ mod tests {
         let index = sample_tree();
         let search = SearchIndex::build(&index);
 
-        let all = Query { text: "rapor".into(), ..Default::default() };
+        let all = Query {
+            text: "rapor".into(),
+            ..Default::default()
+        };
         assert_eq!(search.run(&index, &all).len(), 3);
 
-        let scoped = Query { text: r"belgeler\rapor".into(), ..Default::default() };
+        let scoped = Query {
+            text: r"belgeler\rapor".into(),
+            ..Default::default()
+        };
         let hits = search.run(&index, &scoped);
         assert_eq!(names_of(&index, &hits), vec!["rapor.docx"]);
 
         // Forward slashes work the same way.
-        let with_slash = Query { text: "windows/rapor".into(), ..Default::default() };
-        assert_eq!(names_of(&index, &search.run(&index, &with_slash)), vec!["rapor.log"]);
+        let with_slash = Query {
+            text: "windows/rapor".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            names_of(&index, &search.run(&index, &with_slash)),
+            vec!["rapor.log"]
+        );
     }
 
     #[test]
     fn a_path_query_that_matches_nothing_returns_nothing() {
         let index = sample_tree();
         let search = SearchIndex::build(&index);
-        let query = Query { text: r"program files\rapor".into(), ..Default::default() };
+        let query = Query {
+            text: r"program files\rapor".into(),
+            ..Default::default()
+        };
         assert!(search.run(&index, &query).is_empty());
     }
 
     #[test]
     fn sorts_by_name_size_and_path() {
         let index = index_from_specs(vec![
-            crate::mft::test_support::Spec { record: 20, parent: ROOT_RECORD, name: "beta.txt", flags: 0, size: 300 },
-            crate::mft::test_support::Spec { record: 21, parent: ROOT_RECORD, name: "Alpha.txt", flags: 0, size: 100 },
-            crate::mft::test_support::Spec { record: 22, parent: ROOT_RECORD, name: "gamma.txt", flags: 0, size: 200 },
+            crate::mft::test_support::Spec {
+                record: 20,
+                parent: ROOT_RECORD,
+                name: "beta.txt",
+                flags: 0,
+                size: 300,
+            },
+            crate::mft::test_support::Spec {
+                record: 21,
+                parent: ROOT_RECORD,
+                name: "Alpha.txt",
+                flags: 0,
+                size: 100,
+            },
+            crate::mft::test_support::Spec {
+                record: 22,
+                parent: ROOT_RECORD,
+                name: "gamma.txt",
+                flags: 0,
+                size: 200,
+            },
         ]);
         let search = SearchIndex::build(&index);
 
-        let by_name = Query { text: ".txt".into(), sort_by: SortBy::Name, ..Default::default() };
+        let by_name = Query {
+            text: ".txt".into(),
+            sort_by: SortBy::Name,
+            ..Default::default()
+        };
         assert_eq!(
             names_of(&index, &search.run(&index, &by_name)),
             vec!["Alpha.txt", "beta.txt", "gamma.txt"]
         );
 
-        let by_size = Query { text: ".txt".into(), sort_by: SortBy::Size, ..Default::default() };
+        let by_size = Query {
+            text: ".txt".into(),
+            sort_by: SortBy::Size,
+            ..Default::default()
+        };
         assert_eq!(
             names_of(&index, &search.run(&index, &by_size)),
             vec!["Alpha.txt", "gamma.txt", "beta.txt"]
@@ -522,7 +580,11 @@ mod tests {
             vec!["beta.txt", "gamma.txt", "Alpha.txt"]
         );
 
-        let by_path = Query { text: ".txt".into(), sort_by: SortBy::Path, ..Default::default() };
+        let by_path = Query {
+            text: ".txt".into(),
+            sort_by: SortBy::Path,
+            ..Default::default()
+        };
         assert_eq!(
             names_of(&index, &search.run(&index, &by_path)),
             vec!["Alpha.txt", "beta.txt", "gamma.txt"]
@@ -533,20 +595,33 @@ mod tests {
     fn filters_by_kind_and_size() {
         let entry = |flags: u16, size: u64| crate::mft::test_support::bare_entry(flags, size, 0);
 
-        let files = Filter { files_only: true, ..Default::default() };
+        let files = Filter {
+            files_only: true,
+            ..Default::default()
+        };
         assert!(files.keeps(&entry(0, 0)));
         assert!(!files.keeps(&entry(crate::mft::IS_DIR, 0)));
 
-        let dirs = Filter { dirs_only: true, ..Default::default() };
+        let dirs = Filter {
+            dirs_only: true,
+            ..Default::default()
+        };
         assert!(dirs.keeps(&entry(crate::mft::IS_DIR, 0)));
         assert!(!dirs.keeps(&entry(0, 0)));
 
-        let range = Filter { min_size: Some(1000), max_size: Some(2000), ..Default::default() };
+        let range = Filter {
+            min_size: Some(1000),
+            max_size: Some(2000),
+            ..Default::default()
+        };
         assert!(range.keeps(&entry(0, 1500)));
         assert!(!range.keeps(&entry(0, 999)));
         assert!(!range.keeps(&entry(0, 2001)));
 
-        let visible = Filter { skip_hidden: true, ..Default::default() };
+        let visible = Filter {
+            skip_hidden: true,
+            ..Default::default()
+        };
         assert!(visible.keeps(&entry(0, 0)));
         assert!(!visible.keeps(&entry(crate::mft::IS_HIDDEN, 0)));
         assert!(!visible.keeps(&entry(crate::mft::IS_SYSTEM, 0)));
@@ -559,7 +634,10 @@ mod tests {
 
         let dirs_only = Query {
             text: "".into(),
-            filter: Filter { dirs_only: true, ..Default::default() },
+            filter: Filter {
+                dirs_only: true,
+                ..Default::default()
+            },
             sort_by: SortBy::Name,
             ..Default::default()
         };

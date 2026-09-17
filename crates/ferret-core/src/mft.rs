@@ -14,7 +14,6 @@
 //! live in one shared arena: a `Box<str>` per entry would add two million heap
 //! allocations, their allocator headers, and a pointer chase per comparison.
 
-
 use std::io;
 use std::time::{Duration, Instant};
 
@@ -246,7 +245,10 @@ pub fn scan_with(letter: char, options: ScanOptions) -> io::Result<Index> {
     let mft_bytes = crate::runs::total_clusters(&runs) * volume.bytes_per_cluster;
     let record_size = volume.bytes_per_record as usize;
     if record_size == 0 {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "kayit boyutu sifir"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "kayit boyutu sifir",
+        ));
     }
 
     let estimated = (mft_bytes / record_size as u64) as usize;
@@ -254,7 +256,10 @@ pub fn scan_with(letter: char, options: ScanOptions) -> io::Result<Index> {
     let mut names = String::with_capacity(estimated * 20);
     let mut by_record: Vec<u32> = vec![NO_ENTRY; estimated];
 
-    let mut stats = ScanStats { mft_bytes, ..Default::default() };
+    let mut stats = ScanStats {
+        mft_bytes,
+        ..Default::default()
+    };
     let sector = volume.bytes_per_sector as usize;
 
     // Round the chunk down to a whole number of records so a record never
@@ -346,7 +351,13 @@ pub fn scan_with(letter: char, options: ScanOptions) -> io::Result<Index> {
     names.shrink_to_fit();
     stats.total_time = started.elapsed();
 
-    Ok(Index { letter: volume.letter, entries, names, by_record, stats })
+    Ok(Index {
+        letter: volume.letter,
+        entries,
+        names,
+        by_record,
+        stats,
+    })
 }
 
 /// Reachability of one entry, memoised while walking parent chains.
@@ -417,7 +428,9 @@ fn retain_reachable(entries: &mut Vec<Entry>, names: &mut String, by_record: &mu
         }
     }
 
-    let kept: Vec<usize> = (0..entries.len()).filter(|i| state[*i] == Reach::Yes).collect();
+    let kept: Vec<usize> = (0..entries.len())
+        .filter(|i| state[*i] == Reach::Yes)
+        .collect();
     let removed = (entries.len() - kept.len()) as u64;
     if removed == 0 {
         return 0;
@@ -449,8 +462,7 @@ fn retain_reachable(entries: &mut Vec<Entry>, names: &mut String, by_record: &mu
 
 /// NTFS metafiles: the low records, plus the `$…` entries sitting in the root.
 fn is_system_record(number: u32, parsed: &ParsedEntry) -> bool {
-    number < FIRST_USER_RECORD
-        || (parsed.parent == ROOT_RECORD && parsed.name.starts_with('$'))
+    number < FIRST_USER_RECORD || (parsed.parent == ROOT_RECORD && parsed.name.starts_with('$'))
 }
 
 /// A record decoded but not yet placed into the index's arenas.
@@ -612,11 +624,23 @@ pub(crate) mod test_support {
     }
 
     pub fn file(record: u32, parent: u32, name: &'static str) -> Spec {
-        Spec { record, parent, name, flags: 0, size: 0 }
+        Spec {
+            record,
+            parent,
+            name,
+            flags: 0,
+            size: 0,
+        }
     }
 
     pub fn dir(record: u32, parent: u32, name: &'static str) -> Spec {
-        Spec { record, parent, name, flags: IS_DIR, size: 0 }
+        Spec {
+            record,
+            parent,
+            name,
+            flags: IS_DIR,
+            size: 0,
+        }
     }
 
     /// A standalone entry for tests that only exercise the flag/size fields.
@@ -653,7 +677,13 @@ pub(crate) mod test_support {
             });
         }
 
-        Index { letter: 'C', entries, names, by_record, stats: ScanStats::default() }
+        Index {
+            letter: 'C',
+            entries,
+            names,
+            by_record,
+            stats: ScanStats::default(),
+        }
     }
 
     /// Flat index of files, all sitting directly in the root.
@@ -669,7 +699,7 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod tests {
-    use super::test_support::{dir, file, index_from_specs, index_from_names};
+    use super::test_support::{dir, file, index_from_names, index_from_specs};
     use super::*;
 
     #[test]
@@ -679,7 +709,10 @@ mod tests {
             dir(21, 20, "pc"),
             file(22, 21, "notes.txt"),
         ]);
-        assert_eq!(index.full_path(2).as_deref(), Some(r"C:\Users\pc\notes.txt"));
+        assert_eq!(
+            index.full_path(2).as_deref(),
+            Some(r"C:\Users\pc\notes.txt")
+        );
         assert_eq!(index.full_path(0).as_deref(), Some(r"C:\Users"));
         assert_eq!(index.parent_path(2).as_deref(), Some(r"C:\Users\pc"));
     }
@@ -753,7 +786,8 @@ mod tests {
 
     #[test]
     fn a_reachable_only_index_is_left_untouched() {
-        let mut index = index_from_specs(vec![dir(20, ROOT_RECORD, "Users"), file(21, 20, "a.txt")]);
+        let mut index =
+            index_from_specs(vec![dir(20, ROOT_RECORD, "Users"), file(21, 20, "a.txt")]);
         let removed = retain_reachable(&mut index.entries, &mut index.names, &mut index.by_record);
         assert_eq!(removed, 0);
         assert_eq!(index.len(), 2);

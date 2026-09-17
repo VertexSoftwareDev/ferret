@@ -5,3 +5,6 @@
 # Tauri / frontend (ileride)
 node_modules/
 dist/
+
+# Tauri generated schemas
+crates/ferret-app/gen/

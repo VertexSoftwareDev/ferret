@@ -17,7 +17,13 @@ use crate::commands::build_rows;
 use crate::state::Volume;
 
 /// Queries the smoke test runs: common, rare, path-scoped and no-hit.
-const QUERIES: &[&str] = &["a", "exe", "setup", r"windows\system32\kernel", "zzqqxxnope"];
+const QUERIES: &[&str] = &[
+    "a",
+    "exe",
+    "setup",
+    r"windows\system32\kernel",
+    "zzqqxxnope",
+];
 
 /// How many reconstructed paths to verify against the filesystem.
 const PATHS_TO_VERIFY: usize = 200;
@@ -47,7 +53,10 @@ pub fn run() -> i32 {
 
     println!("  dosya            : {}", stats.files);
     println!("  klasor           : {}", stats.dirs);
-    println!("  tarama           : {:.2} sn", stats.total_time.as_secs_f64());
+    println!(
+        "  tarama           : {:.2} sn",
+        stats.total_time.as_secs_f64()
+    );
     println!("  arama indeksi    : {:.2} sn", build_time.as_secs_f64());
     println!(
         "  bellek           : {}",
@@ -64,7 +73,11 @@ pub fn run() -> i32 {
 
     println!("  {:<32} {:>10} {:>10}", "sorgu", "sonuc", "sure");
     for text in QUERIES {
-        let query = Query { text: (*text).to_string(), sort_by: SortBy::None, ..Default::default() };
+        let query = Query {
+            text: (*text).to_string(),
+            sort_by: SortBy::None,
+            ..Default::default()
+        };
         let started = Instant::now();
         let hits = volume.search.run(&volume.index, &query);
         let ms = started.elapsed().as_secs_f64() * 1000.0;
@@ -81,10 +94,19 @@ pub fn run() -> i32 {
     // The real end-to-end check: does every path Ferret built actually exist?
     let all = volume.search.run(
         &volume.index,
-        &Query { text: String::new(), sort_by: SortBy::None, ..Default::default() },
+        &Query {
+            text: String::new(),
+            sort_by: SortBy::None,
+            ..Default::default()
+        },
     );
     let step = (all.len() / PATHS_TO_VERIFY).max(1);
-    let sample: Vec<u32> = all.iter().copied().step_by(step).take(PATHS_TO_VERIFY).collect();
+    let sample: Vec<u32> = all
+        .iter()
+        .copied()
+        .step_by(step)
+        .take(PATHS_TO_VERIFY)
+        .collect();
     let rows = build_rows(&volume, &sample, 0, sample.len());
 
     let mut checked = 0;
@@ -98,7 +120,10 @@ pub fn run() -> i32 {
         }
     }
 
-    println!("  yol dogrulama    : {checked}/{} yol diskte bulundu", rows.len());
+    println!(
+        "  yol dogrulama    : {checked}/{} yol diskte bulundu",
+        rows.len()
+    );
     if !missing.is_empty() {
         // A handful can legitimately vanish between the scan and this check on
         // a live system; a large share means path reconstruction is broken.

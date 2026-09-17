@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  check:
+    # Ferret is Windows-only by construction: it reads raw NTFS volumes and
+    # builds a WebView2 window, so there is nothing meaningful to test elsewhere.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry and build output
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features
+
+      - name: Tests
+        run: cargo test --all
+
+      - name: Release build
+        run: cargo build --release --all
+
+      # The self-test needs administrator rights to read a raw volume, which a
+      # hosted runner does not grant, so it is not part of CI. Run it locally
+      # before tagging a release:
+      #     cargo run --release -p ferret-app -- --selftest

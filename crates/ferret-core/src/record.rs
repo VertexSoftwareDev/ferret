@@ -153,7 +153,11 @@ impl<'a> Attribute<'a> {
 /// not become an infinite loop.
 pub fn attributes<'a>(record: &'a [u8], header: &RecordHeader) -> Attributes<'a> {
     let limit = (header.used_size as usize).min(record.len());
-    Attributes { record, pos: header.first_attribute, limit }
+    Attributes {
+        record,
+        pos: header.first_attribute,
+        limit,
+    }
 }
 
 pub struct Attributes<'a> {
@@ -217,7 +221,10 @@ impl Namespace {
 
     /// Whether this is a name a person would recognise.
     pub fn is_preferred(&self) -> bool {
-        matches!(self, Namespace::Win32 | Namespace::Win32AndDos | Namespace::Posix)
+        matches!(
+            self,
+            Namespace::Win32 | Namespace::Win32AndDos | Namespace::Posix
+        )
     }
 }
 

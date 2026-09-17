@@ -193,7 +193,10 @@ pub async fn search(
         let mut sort_skipped = false;
 
         let hits = {
-            let unsorted = Query { sort_by: SortBy::None, ..query.clone() };
+            let unsorted = Query {
+                sort_by: SortBy::None,
+                ..query.clone()
+            };
             let mut hits = volume.search.run(&volume.index, &unsorted);
             if query.sort_by != SortBy::None {
                 if hits.len() <= SORT_LIMIT {
@@ -209,9 +212,17 @@ pub async fn search(
         let rows = build_rows(volume, &hits, 0, limit);
         let total = hits.len();
 
-        inner.last = LastResult { letter: Some(letter), hits };
+        inner.last = LastResult {
+            letter: Some(letter),
+            hits,
+        };
 
-        Ok(SearchResponse { total, took_ms, rows, sort_skipped })
+        Ok(SearchResponse {
+            total,
+            took_ms,
+            rows,
+            sort_skipped,
+        })
     })
     .await
     .map_err(|e| e.to_string())?
@@ -233,7 +244,12 @@ pub async fn page(
         let Some(volume) = inner.volumes.get(&letter) else {
             return Ok(Vec::new());
         };
-        Ok(build_rows(volume, &inner.last.hits, offset, limit.min(2_000)))
+        Ok(build_rows(
+            volume,
+            &inner.last.hits,
+            offset,
+            limit.min(2_000),
+        ))
     })
     .await
     .map_err(|e| e.to_string())?

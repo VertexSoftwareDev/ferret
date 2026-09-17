@@ -7,8 +7,8 @@
 //!
 //! Nothing here ever opens the volume for writing. Ferret only reads.
 
-use std::fs::OpenOptions;
 use std::fs::File;
+use std::fs::OpenOptions;
 use std::io::{self, Read, Seek, SeekFrom};
 
 use crate::bytes::{u16le, u64le};
