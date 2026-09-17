@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Core permissions the Ferret window needs: events for scan progress, and the window itself.","local":true,"windows":["main"],"permissions":["core:default","core:window:allow-set-title"]}}

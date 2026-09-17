@@ -296,7 +296,9 @@ fn split_path_query(text: &str) -> (&str, Option<&str>) {
     }
 }
 
-fn sort_hits(index: &Index, hits: &mut [Hit], sort_by: SortBy, order: SortOrder) {
+/// Order a hit list in place. Exposed so a caller can match first and decide
+/// about sorting afterwards, which is what keeps a half-million-hit query fast.
+pub fn sort_hits(index: &Index, hits: &mut [Hit], sort_by: SortBy, order: SortOrder) {
     if sort_by == SortBy::None || hits.len() < 2 {
         return;
     }

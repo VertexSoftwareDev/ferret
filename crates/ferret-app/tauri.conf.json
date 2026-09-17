@@ -1,0 +1,48 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Ferret",
+  "version": "0.1.0",
+  "identifier": "dev.ferret.search",
+  "build": {
+    "frontendDist": "../../ui"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Ferret",
+        "width": 1180,
+        "height": 720,
+        "minWidth": 720,
+        "minHeight": 420,
+        "resizable": true,
+        "center": true,
+        "decorations": true,
+        "theme": null,
+        "label": "main"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost"
+    },
+    "withGlobalTauri": true
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.ico"
+    ],
+    "copyright": "Ferret",
+    "shortDescription": "Instant file search for Windows",
+    "longDescription": "Ferret indexes an NTFS volume by reading its master file table directly, so a million files are searchable in seconds and every keystroke filters them instantly.",
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine"
+      }
+    }
+  }
+}

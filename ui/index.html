@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="tr" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ferret</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="toolbar">
+      <div class="brand" title="Ferret">
+        <svg viewBox="0 0 24 24" aria-hidden="true" class="brand-mark">
+          <circle cx="11" cy="11" r="6.5" />
+          <path d="M15.8 15.8 L21 21" />
+        </svg>
+        <span>Ferret</span>
+      </div>
+
+      <div class="search-wrap">
+        <input
+          id="query"
+          type="search"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="Dosya adı ara…  (yol için:  belgeler\rapor)"
+          aria-label="Arama"
+        />
+        <kbd class="hint">Ctrl+F</kbd>
+      </div>
+
+      <select id="drive" aria-label="Sürücü"></select>
+
+      <button id="rescan" class="ghost" title="Yeniden tara (F5)">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M20 11a8 8 0 1 0-2.3 5.7" />
+          <path d="M20 5v6h-6" />
+        </svg>
+      </button>
+
+      <button id="theme" class="ghost" title="Tema değiştir"></button>
+    </header>
+
+    <nav class="filters">
+      <label class="chip"><input type="checkbox" id="f-files" /> Yalnızca dosya</label>
+      <label class="chip"><input type="checkbox" id="f-dirs" /> Yalnızca klasör</label>
+      <label class="chip"><input type="checkbox" id="f-hidden" checked /> Gizlileri atla</label>
+      <label class="chip">
+        En az
+        <select id="f-size">
+          <option value="">—</option>
+          <option value="1048576">1 MB</option>
+          <option value="10485760">10 MB</option>
+          <option value="104857600">100 MB</option>
+          <option value="1073741824">1 GB</option>
+        </select>
+      </label>
+      <span class="spacer"></span>
+      <span id="notice" class="notice" hidden></span>
+    </nav>
+
+    <main class="table" id="table">
+      <div class="thead" role="row">
+        <button class="th col-name" data-sort="name" role="columnheader">Ad</button>
+        <button class="th col-path" data-sort="path" role="columnheader">Konum</button>
+        <button class="th col-kind" role="columnheader">Tür</button>
+        <button class="th col-size" data-sort="size" role="columnheader">Boyut</button>
+        <button class="th col-date" data-sort="modified" role="columnheader">Değiştirilme</button>
+      </div>
+
+      <div class="viewport" id="viewport" tabindex="0">
+        <div class="sizer" id="sizer"></div>
+        <div class="rows" id="rows"></div>
+      </div>
+
+      <div class="overlay" id="overlay">
+        <div class="overlay-card">
+          <div class="spinner" id="spinner"></div>
+          <p id="overlay-title">Hazırlanıyor…</p>
+          <p id="overlay-detail" class="muted"></p>
+          <button id="overlay-action" class="primary" hidden></button>
+        </div>
+      </div>
+    </main>
+
+    <footer class="status">
+      <span id="count">—</span>
+      <span class="spacer"></span>
+      <span id="volume-info" class="muted"></span>
+    </footer>
+
+    <div class="menu" id="menu" hidden>
+      <button data-action="open">Aç</button>
+      <button data-action="reveal">Klasörde göster</button>
+      <button data-action="copy">Yolu kopyala</button>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

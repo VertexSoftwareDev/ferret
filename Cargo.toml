@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/ferret-core", "crates/ferret-cli"]
+members = ["crates/ferret-core", "crates/ferret-cli", "crates/ferret-app"]
 
 [workspace.package]
 version = "0.1.0"
