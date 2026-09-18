@@ -60,8 +60,9 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force release | Out-Null
-          Copy-Item target/release/ferret-native.exe release/Ferret.exe
-          Copy-Item target/release/ferret.exe        release/ferret-cli.exe
+          Copy-Item target/release/ferret.exe     release/Ferret.exe
+          Copy-Item target/release/ferret-app.exe release/Ferret-webview.exe
+          Copy-Item target/release/ferret-cli.exe release/ferret-cli.exe
           Copy-Item target/release/bundle/nsis/*-setup.exe release/
           Get-ChildItem release | Select-Object Name, Length
 
@@ -83,7 +84,8 @@ jobs:
           | File | What it is |
           | --- | --- |
           | `Ferret.exe` | The application. One file, nothing to install. |
-          | `Ferret_*-setup.exe` | Installer for the web-view build, if you want that one instead. |
+          | `Ferret-webview.exe` | The same application drawn in a web view, if you prefer that one. Needs WebView2, which Windows 11 already has. |
+          | `Ferret_*-setup.exe` | The web-view build as an installer, with a Start menu entry. |
           | `ferret-cli.exe` | Command line: `scan`, `find`, `bench`. |
 
           Ferret indexes by reading the NTFS master file table directly, which

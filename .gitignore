@@ -1,5 +1,6 @@
 /target
 /release
+/*.exe
 **/*.rs.bk
 *.pdb
 

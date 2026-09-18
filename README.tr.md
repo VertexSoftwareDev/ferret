@@ -114,6 +114,10 @@ cargo run --release -p ferret-native   # pencere
 cargo run --release -p ferret-app      # aynı şey, web görünümüyle çizilmiş
 ```
 
+Çalıştırılabilir dosyalar `target/release/` içine düşer: `ferret.exe`
+uygulamanın kendisi, `ferret-app.exe` web görünümlü sürüm, `ferret-cli.exe` ise
+aşağıdaki geliştirme aracı.
+
 Yukarıdaki sayıların geldiği yer olan, motora ait geliştirme aracı:
 
 ```powershell

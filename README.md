@@ -108,6 +108,10 @@ cargo run --release -p ferret-native   # the window
 cargo run --release -p ferret-app      # the same thing, drawn by a web view
 ```
 
+The executables land in `target/release/`: `ferret.exe` is the application,
+`ferret-app.exe` is the web-view build, and `ferret-cli.exe` is the harness
+below.
+
 The development harness for the engine, which is where the numbers above come
 from:
 

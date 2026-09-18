@@ -5,8 +5,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+# The application, so it gets the application's name: someone who downloads
+# one file and double-clicks it should not have to know what "native" meant.
 [[bin]]
-name = "ferret-native"
+name = "ferret"
 path = "src/main.rs"
 
 [dependencies]
