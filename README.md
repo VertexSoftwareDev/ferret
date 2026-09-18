@@ -37,15 +37,21 @@ deleted while it runs appear in and disappear from the index on their own.
 
 ## Two windows
 
-Ferret has two front ends over the same engine, and they do the same things:
+Ferret has two front ends over the same engine. They do the same things — same
+columns, same filters, same keyboard, same two languages, same live updates.
 
-- **`ferret-native`** — one executable, drawn by [egui] with no browser engine
-  behind it. Start this one unless you have a reason not to.
-- **`ferret-app`** — the same application drawn by WebView2, through [Tauri].
+**`ferret-native`** is the one to use. One executable, drawn by [egui], with no
+browser engine behind it: a quarter of the memory, one process instead of seven,
+and nothing to install alongside it.
+
+**`ferret-app`** draws the same application in a web view, through [Tauri]. It is
+kept, not deprecated — it holds on to things the native window gives up, such as
+paths you can select with the mouse, the whole system font stack, and a window
+screen readers understand for free.
 
 Everything below the window is shared, down to the change-journal rules, so
-neither can drift from the other. The measured differences, and why both are
-kept, are in [docs/TWO-WINDOWS.md](docs/TWO-WINDOWS.md).
+neither can drift from the other. The measurements, and the full list of
+differences, are in [docs/TWO-WINDOWS.md](docs/TWO-WINDOWS.md).
 
 [egui]: https://github.com/emilk/egui
 [Tauri]: https://tauri.app
@@ -86,8 +92,8 @@ run the app, press `Win+Shift+S`, and drop the images in `docs/`.
 ## Running it
 
 ```powershell
-cargo run --release -p ferret-native   # one executable, no web view
-cargo run --release -p ferret-app      # the same thing, drawn by WebView2
+cargo run --release -p ferret-native   # the window
+cargo run --release -p ferret-app      # the same thing, drawn by a web view
 ```
 
 The development harness for the engine, which is where the numbers above come
@@ -152,10 +158,10 @@ There is a fuller walkthrough in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ```
 crates/ferret-core/     NTFS reader, index and search engine (no Windows API deps)
 crates/ferret-shell/    Indexes, queries, row formatting, change-journal watcher
+crates/ferret-native/   The window: egui, one executable
+crates/ferret-app/      The alternative window: Tauri and a web view
+ui/                       its front end: HTML, CSS, JavaScript — no framework
 crates/ferret-cli/      Development harness: scan, find, bench
-crates/ferret-native/   The native window: egui, one executable
-crates/ferret-app/      The web-view window: Tauri
-ui/                     Its front end: HTML, CSS, JavaScript — no framework
 scripts/                Icon generator
 ```
 

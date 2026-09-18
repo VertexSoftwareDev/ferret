@@ -211,10 +211,23 @@ results it can no longer vouch for.
 
 ## The application layer
 
-The window is a web view; all the work stays in Rust.
+Between the engine and the pixels sits `ferret-shell`: the indexes and the lock
+around them, the queries, the row formatting, the change-journal watcher, and
+the headless self-test. Nothing in it knows what a window is, and nothing in it
+is async — every call blocks for as long as it takes and the caller decides
+which thread pays.
 
-- Scanning and searching both run on blocking tasks, never the UI thread.
-- The backend keeps the last query's hit list, so scrolling asks for a window of
+That is what makes two front ends possible without two copies of the rules.
+`ferret-native` draws with egui and is the one to reach for; `ferret-app` draws
+the same application in a web view. Both are thin. The measured differences are
+in [TWO-WINDOWS.md](TWO-WINDOWS.md).
+
+Whichever window is on top, the same four things hold:
+
+- Scanning and searching never run on the thread that draws. The native window
+  hands them to a worker thread and takes the answers as events; the web view
+  hands them to a blocking task and takes them as promises.
+- The shell keeps the last query's hit list, so scrolling asks for a window of
   rows rather than re-running the search.
 - A search takes a **read** lock and only the hit list it caches takes a write
   one, so two queries never wait on each other.
@@ -223,9 +236,17 @@ The window is a web view; all the work stays in Rust.
   on the volume tells it when the index moved underneath it, in which case the
   work is thrown away and retried on the next cycle. Typing stays responsive
   while files are changing.
-- The front end virtualises the list: a spacer gives the scrollbar its true
-  height, and only the rows in view exist in the DOM. A query matching a million
-  files renders about thirty `div`s.
+
+Both windows virtualise the list, by different means. egui's table calls back
+only for the rows on screen. The web view gets there by hand: a spacer element
+gives the scrollbar its true height and a translated container holds the visible
+rows, so a query matching a million files renders about thirty `div`s.
+
+The native window adds one thing the web view does not need — requests are
+collapsed before they run. A drag of the scrollbar queues forty page requests
+and a fast typist queues six searches; only the last of each is still wanted,
+and a search retires every page queued beside it, because those offsets point
+into a hit list that is about to be replaced.
 
 ## Verifying it
 
@@ -234,6 +255,7 @@ run offsets, truncated run lists, attribute chains with corrupt lengths, 8.3
 alias filtering, reachability and cycles, path building, and the search's
 boundary cases.
 
-The end-to-end check is `ferret-app.exe --selftest`, which scans a real volume,
-runs a set of queries, and then asks Windows whether the paths Ferret
-reconstructed actually exist. Anything below 95 % agreement fails the run.
+The end-to-end check is `--selftest`, which both windows offer because it lives
+in the shared crate. It scans a real volume, runs a set of queries, and then asks
+Windows whether the paths Ferret reconstructed actually exist. Anything below
+95 % agreement fails the run.
