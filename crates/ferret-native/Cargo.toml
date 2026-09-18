@@ -1,8 +1,33 @@
 [package]
 name = "ferret-native"
+description = "Ferret's native window: one executable, no web view."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "ferret-native"
+path = "src/main.rs"
+
 [dependencies]
 ferret-shell = { path = "../ferret-shell" }
+# `persistence` is what remembers the drive, sort and filters between runs —
+# the native equivalent of the web view's localStorage.
+# `glow` rather than the default `wgpu` back end: OpenGL is plenty for flat
+# rectangles and text, it starts faster, and wgpu drags in a Direct3D stack
+# that collides with the `windows` crate version Tauri pins in this workspace.
+eframe = { version = "0.36", default-features = false, features = [
+    "glow",
+    "default_fonts",
+    "persistence",
+    "accesskit",
+] }
+egui_extras = "0.36"
+serde = { version = "1", features = ["derive"] }
+# Only to turn the window icon into the raw pixels eframe wants. PNG alone, so
+# this is a decoder rather than an imaging library.
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[dev-dependencies]
+# Only so the preferences test can feed a partial file through serde.
+serde_json = "1"

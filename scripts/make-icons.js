@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
-const OUT = path.join(__dirname, '..', 'crates', 'ferret-app', 'icons');
+const OUT = path.join(__dirname, '..', 'icons');
 
 /** Indigo, matching --accent in the UI. */
 const ACCENT = [99, 102, 241];
