@@ -18,6 +18,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Install the Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -32,6 +37,9 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Interface strings
+        run: node scripts/check-i18n.js
 
       - name: Formatting
         run: cargo fmt --all -- --check

@@ -56,6 +56,13 @@ const I18N = {
     noVolumeTitle: 'NTFS sürücüsü bulunamadı',
     noVolumeDetail: 'Ferret yalnızca NTFS birimlerini okuyabilir.',
 
+    emptyTitle: (query) => `“${query}” için sonuç yok`,
+    // Ferret accepts either slash in a path query, and the forward one keeps
+    // this string free of escapes.
+    emptyHint:
+      'Yazımı kontrol et, ya da filtreleri gevşet. Bir klasörün içinde aramak için eğik çizgi kullan: belgeler/rapor',
+    emptyFiltered: 'Filtreler bu sorguda her şeyi eledi.',
+
     sortSkipped: 'Sonuç kümesi çok büyük olduğu için sıralama uygulanmadı.',
     indexStale: 'Disk çok değişti; güncel sonuçlar için F5 ile yeniden tara.',
     clipboardFailed: (path) => `Pano kullanılamadı: ${path}`,
@@ -122,6 +129,11 @@ const I18N = {
 
     noVolumeTitle: 'No NTFS drive found',
     noVolumeDetail: 'Ferret can only read NTFS volumes.',
+
+    emptyTitle: (query) => `No results for “${query}”`,
+    emptyHint:
+      'Check the spelling, or loosen the filters. To search inside a folder, use a slash: documents/report',
+    emptyFiltered: 'The filters ruled out everything this query matched.',
 
     sortSkipped: 'Too many results to sort, so the order is as found.',
     indexStale: 'The disk has changed a lot; press F5 to re-index.',

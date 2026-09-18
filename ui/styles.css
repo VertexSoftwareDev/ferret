@@ -530,3 +530,46 @@ mark {
   background: var(--muted);
   background-clip: content-box;
 }
+
+/* ---------------- empty state ---------------- */
+
+/*
+ * Shown when a query matches nothing. An empty list with no explanation reads
+ * as a broken app; saying so — and saying what to try — costs one element.
+ */
+.empty {
+  position: absolute;
+  inset: 40px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding-top: 64px;
+  pointer-events: none;
+  text-align: center;
+}
+
+.empty[hidden] {
+  display: none;
+}
+
+.empty svg {
+  width: 30px;
+  height: 30px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  color: var(--border);
+}
+
+.empty p {
+  margin: 0;
+  max-width: 420px;
+}
+
+#empty-title {
+  font-weight: 600;
+  color: var(--muted);
+}

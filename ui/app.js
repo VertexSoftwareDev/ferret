@@ -41,6 +41,9 @@ const el = {
   overlayAction: document.getElementById('overlay-action'),
   spinner: document.getElementById('spinner'),
   menu: document.getElementById('menu'),
+  empty: document.getElementById('empty'),
+  emptyTitle: document.getElementById('empty-title'),
+  emptyHint: document.getElementById('empty-hint'),
   filters: {
     files: document.getElementById('f-files'),
     dirs: document.getElementById('f-dirs'),
@@ -236,6 +239,30 @@ function render() {
 
   el.rows.style.transform = `translateY(${first * ROW_HEIGHT}px)`;
   el.rows.innerHTML = html;
+  renderEmptyState();
+}
+
+/**
+ * Say why the list is blank.
+ *
+ * An empty table with no explanation reads as a broken app, and the two reasons
+ * a query comes back with nothing — no such name, or the filters ruled it all
+ * out — need different advice.
+ */
+function renderEmptyState() {
+  const query = el.query.value.trim();
+  const blank = state.total === 0 && query !== '' && !state.scanning;
+  el.empty.hidden = !blank;
+  if (!blank) return;
+
+  // Only filters the user actually chose count. "Skip hidden" is on by
+  // default, and blaming it for an empty result the moment someone mistypes a
+  // name would send them looking in the wrong place.
+  const filtering =
+    el.filters.files.checked || el.filters.dirs.checked || el.filters.size.value !== '';
+
+  el.emptyTitle.textContent = t.emptyTitle(query);
+  el.emptyHint.textContent = filtering ? t.emptyFiltered : t.emptyHint;
 }
 
 /** Make sure [first,last) is covered by the cache, fetching if it is not. */
