@@ -91,6 +91,16 @@ run the app, press `Win+Shift+S`, and drop the images in `docs/`.
 - Administrator rights — raw volume access is privileged. Ferret starts without
   them and offers to restart elevated at the moment it needs to index.
 
+## Releases
+
+Tagging is the whole process. GitHub Actions runs the tests, builds everything
+and publishes `Ferret.exe`, the installer and the command line as downloads.
+
+```powershell
+git tag v0.1.0
+git push --tags
+```
+
 ## Running it
 
 ```powershell

@@ -96,6 +96,17 @@ bırakın.
   indekslemeye tam ihtiyaç duyduğu anda yönetici olarak yeniden başlamayı
   önerir.
 
+## Sürümler
+
+Etiket atmak sürecin tamamı. GitHub Actions testleri çalıştırır, her şeyi
+derler ve `Ferret.exe`'yi, kurulum dosyasını ve komut satırını indirilebilir
+hale getirir.
+
+```powershell
+git tag v0.1.0
+git push --tags
+```
+
 ## Çalıştırma
 
 ```powershell

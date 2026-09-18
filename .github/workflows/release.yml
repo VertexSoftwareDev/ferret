@@ -1,0 +1,100 @@
+name: Release
+
+# Tagging is the whole trigger: `git tag v0.1.0 && git push --tags` builds
+# everything and publishes it. `workflow_dispatch` is there for a dry run that
+# builds the artefacts and attaches them to the run without creating a release.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install the Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build output
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-release-
+
+      - name: Install the build tooling
+        run: npm ci
+
+      # A tag that does not pass its own tests is not a release. The self-test
+      # needs administrator rights to read a raw volume, which a hosted runner
+      # does not grant, so it stays a local gate.
+      - name: Tests
+        run: cargo test --all
+
+      - name: Build
+        run: cargo build --release --all
+
+      - name: Installer for the web-view window
+        run: npm run bundle
+
+      # Named for what someone downloading it is looking for, rather than for
+      # the crate that produced it.
+      - name: Collect the artefacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release | Out-Null
+          Copy-Item target/release/ferret-native.exe release/Ferret.exe
+          Copy-Item target/release/ferret.exe        release/ferret-cli.exe
+          Copy-Item target/release/bundle/nsis/*-setup.exe release/
+          Get-ChildItem release | Select-Object Name, Length
+
+      - name: Attach the artefacts to the run
+        uses: actions/upload-artifact@v4
+        with:
+          name: ferret-windows-x64
+          path: release/*
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = @'
+          ## Downloads
+
+          | File | What it is |
+          | --- | --- |
+          | `Ferret.exe` | The application. One file, nothing to install. |
+          | `Ferret_*-setup.exe` | Installer for the web-view build, if you want that one instead. |
+          | `ferret-cli.exe` | Command line: `scan`, `find`, `bench`. |
+
+          Ferret indexes by reading the NTFS master file table directly, which
+          Windows treats as a privileged operation. It starts without
+          administrator rights and offers to restart with them at the moment it
+          needs to index. The disk is only ever read, never written to.
+
+          Both windows and the full list of what changed are described in the
+          [README](https://github.com/${{ github.repository }}#readme).
+          '@
+          $files = Get-ChildItem release | ForEach-Object { $_.FullName }
+          gh release create "${{ github.ref_name }}" $files `
+            --title "Ferret ${{ github.ref_name }}" `
+            --notes $notes
