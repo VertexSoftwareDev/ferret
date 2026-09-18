@@ -1,8 +1,9 @@
 /target
+/release
 **/*.rs.bk
 *.pdb
 
-# Tauri / frontend (ileride)
+# Node tooling
 node_modules/
 dist/
 
