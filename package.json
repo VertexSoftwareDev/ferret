@@ -7,7 +7,7 @@
     "icons": "node scripts/make-icons.js",
     "dev": "tauri dev --config crates/ferret-app/tauri.conf.json",
     "bundle": "tauri build --config crates/ferret-app/tauri.conf.json",
-    "check": "node scripts/check-i18n.js"
+    "check": "node scripts/check-i18n.js && node scripts/check-readme.js"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

@@ -41,6 +41,9 @@ jobs:
       - name: Interface strings
         run: node scripts/check-i18n.js
 
+      - name: The two READMEs
+        run: node scripts/check-readme.js
+
       - name: Formatting
         run: cargo fmt --all -- --check
 

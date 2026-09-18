@@ -1,3 +1,5 @@
+***English** · [Türkçe](README.tr.md)*
+
 # Ferret
 
 Instant file search for Windows. Type a letter, and a million files filter in
