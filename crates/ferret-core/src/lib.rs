@@ -25,3 +25,7 @@ pub use mft::{
 };
 pub use search::{sort_hits, Filter, Hit, Query, SearchIndex, SortBy, SortOrder};
 pub use volume::{human_size, Volume};
+
+/// Hand-built indexes for tests. Enabled by the `testing` feature.
+#[cfg(any(test, feature = "testing"))]
+pub use mft::test_support as testing;

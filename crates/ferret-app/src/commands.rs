@@ -160,7 +160,11 @@ pub async fn scan_volume(
         })
         .map_err(describe_io)?;
         let search = SearchIndex::build(&index);
-        let volume = Volume { index, search };
+        let volume = Volume {
+            index,
+            search,
+            generation: 0,
+        };
 
         let info = VolumeInfo {
             letter: letter.to_string(),
@@ -421,5 +425,104 @@ fn describe_io(err: std::io::Error) -> String {
         std::io::ErrorKind::PermissionDenied => "needs_elevation".to_string(),
         std::io::ErrorKind::NotFound => "drive_not_found".to_string(),
         _ => format!("scan_failed:{err}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ferret_core::testing::{dir, file, index_from_specs};
+    use ferret_core::SearchIndex;
+
+    /// A small volume: C:\Users\pc\ with one file in it and one folder.
+    fn sample() -> Volume {
+        let index = index_from_specs(vec![
+            dir(20, ferret_core::mft::ROOT_RECORD, "Users"),
+            dir(21, 20, "pc"),
+            file(22, 21, "rapor.pdf"),
+            dir(23, 21, "Belgeler"),
+        ]);
+        let search = SearchIndex::build(&index);
+        Volume {
+            index,
+            search,
+            generation: 0,
+        }
+    }
+
+    #[test]
+    fn a_row_carries_everything_the_table_shows() {
+        let volume = sample();
+        let rows = build_rows(&volume, &[2], 0, 10);
+
+        assert_eq!(rows.len(), 1);
+        let row = &rows[0];
+        assert_eq!(row.name, "rapor.pdf");
+        assert_eq!(row.path, r"C:\Users\pc\rapor.pdf");
+        assert_eq!(row.folder, r"C:\Users\pc");
+        assert_eq!(row.kind, "PDF");
+        assert!(!row.is_dir);
+    }
+
+    #[test]
+    fn a_folder_row_reports_no_size_and_no_type() {
+        let volume = sample();
+        let rows = build_rows(&volume, &[3], 0, 10);
+
+        assert_eq!(rows[0].name, "Belgeler");
+        assert_eq!(rows[0].path, r"C:\Users\pc\Belgeler");
+        // Both are worded by the front end, which knows the language.
+        assert_eq!(rows[0].size, "");
+        assert_eq!(rows[0].kind, "");
+        assert!(rows[0].is_dir);
+    }
+
+    #[test]
+    fn paging_stays_inside_the_hit_list() {
+        let volume = sample();
+        let hits = [0u32, 1, 2, 3];
+
+        assert_eq!(build_rows(&volume, &hits, 0, 2).len(), 2);
+        assert_eq!(build_rows(&volume, &hits, 2, 10).len(), 2);
+        // Past the end is empty, not a panic.
+        assert!(build_rows(&volume, &hits, 4, 10).is_empty());
+        assert!(build_rows(&volume, &hits, 99, 10).is_empty());
+        assert!(build_rows(&volume, &hits, 0, 0).is_empty());
+    }
+
+    #[test]
+    fn a_hit_pointing_nowhere_is_dropped_rather_than_panicking() {
+        let volume = sample();
+        // The journal can retire an entry between a search and a page request.
+        assert!(build_rows(&volume, &[9999], 0, 10).is_empty());
+    }
+
+    #[test]
+    fn sort_names_map_to_the_engine() {
+        assert_eq!(parse_sort("name"), SortBy::Name);
+        assert_eq!(parse_sort("size"), SortBy::Size);
+        assert_eq!(parse_sort("modified"), SortBy::Modified);
+        assert_eq!(parse_sort("path"), SortBy::Path);
+        // Anything unknown, including the empty string, leaves scan order.
+        assert_eq!(parse_sort(""), SortBy::None);
+        assert_eq!(parse_sort("colour"), SortBy::None);
+    }
+
+    #[test]
+    fn io_errors_become_codes_the_front_end_can_phrase() {
+        use std::io::{Error, ErrorKind};
+
+        assert_eq!(
+            describe_io(Error::from(ErrorKind::PermissionDenied)),
+            "needs_elevation"
+        );
+        assert_eq!(
+            describe_io(Error::from(ErrorKind::NotFound)),
+            "drive_not_found"
+        );
+        // Anything else keeps the operating system's own words after the code.
+        let other = describe_io(Error::other("disk on fire"));
+        assert!(other.starts_with("scan_failed:"), "{other}");
+        assert!(other.contains("disk on fire"));
     }
 }

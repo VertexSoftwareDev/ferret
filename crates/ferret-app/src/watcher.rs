@@ -109,11 +109,17 @@ fn run(app: AppHandle, state: AppState, letter: char, generation: u64) {
             continue;
         }
 
-        let Some(update) = apply(&state, letter, &batch, &mut arena_stale, rebuild_due) else {
+        let Some(update) = apply(&state, letter, &batch, &mut arena_stale) else {
             continue;
         };
-        if rebuild_due {
-            arena_stale = false;
+
+        // Rebuilding the arena takes about 100 ms. Doing it under the write
+        // lock would stall whoever is typing, so it happens under a read lock
+        // and only the swap takes the write lock.
+        if arena_stale && rebuild_due {
+            if rebuild_arena(&state, letter) {
+                arena_stale = false;
+            }
             last_rebuild = Instant::now();
         }
 
@@ -132,7 +138,6 @@ fn apply(
     letter: char,
     batch: &[Change],
     arena_stale: &mut bool,
-    rebuild_due: bool,
 ) -> Option<IndexUpdate> {
     // A single save produces several entries for the same file — create, extend,
     // close. Only the last state matters, and collapsing them here saves both
@@ -175,11 +180,8 @@ fn apply(
         }
     }
 
-    // The arena only has to be rebuilt when a name appeared or changed;
-    // deletions are filtered at query time and size changes do not touch it.
-    if *arena_stale && rebuild_due {
-        let rebuilt = SearchIndex::build(&indexed.index);
-        indexed.search = rebuilt;
+    if applied > 0 {
+        indexed.generation += 1;
     }
 
     let stats = indexed.index.stats;
@@ -189,6 +191,31 @@ fn apply(
         files: stats.files,
         dirs: stats.dirs,
     })
+}
+
+/// Rebuild the search arena for `letter`, holding the write lock only to swap.
+///
+/// Returns whether the new arena was actually installed. It is thrown away when
+/// the index moved while it was being built — a rebuilt arena is only valid for
+/// the index it was built from, and the next cycle will simply try again.
+fn rebuild_arena(state: &AppState, letter: char) -> bool {
+    let (rebuilt, generation) = {
+        let inner = state.read();
+        let Some(volume) = inner.volumes.get(&letter) else {
+            return false;
+        };
+        (SearchIndex::build(&volume.index), volume.generation)
+    };
+
+    let mut inner = state.write();
+    let Some(volume) = inner.volumes.get_mut(&letter) else {
+        return false;
+    };
+    if volume.generation != generation {
+        return false;
+    }
+    volume.search = rebuilt;
+    true
 }
 
 /// Size and modification time of a file, as `(bytes, FILETIME)`.

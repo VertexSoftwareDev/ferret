@@ -216,6 +216,13 @@ The window is a web view; all the work stays in Rust.
 - Scanning and searching both run on blocking tasks, never the UI thread.
 - The backend keeps the last query's hit list, so scrolling asks for a window of
   rows rather than re-running the search.
+- A search takes a **read** lock and only the hit list it caches takes a write
+  one, so two queries never wait on each other.
+- The watcher rebuilds the search arena — 100 ms — under a read lock too, and
+  takes the write lock only to swap the finished arena in. A generation counter
+  on the volume tells it when the index moved underneath it, in which case the
+  work is thrown away and retried on the next cycle. Typing stays responsive
+  while files are changing.
 - The front end virtualises the list: a spacer gives the scrollbar its true
   height, and only the rows in view exist in the DOM. A query matching a million
   files renders about thirty `div`s.

@@ -14,6 +14,14 @@ use ferret_core::{Index, SearchIndex};
 pub struct Volume {
     pub index: Index,
     pub search: SearchIndex,
+    /// Bumped every time the change journal alters the index.
+    ///
+    /// Rebuilding the search arena takes about 100 ms, which is too long to
+    /// hold a write lock for while someone is typing. The watcher therefore
+    /// builds the new arena under a *read* lock — searches carry on — and takes
+    /// the write lock only to swap it in. This counter is how it notices that
+    /// the index moved underneath it in the meantime.
+    pub generation: u64,
 }
 
 impl Volume {

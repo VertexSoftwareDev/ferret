@@ -828,10 +828,13 @@ fn read_mft_runs(volume: &mut Volume) -> io::Result<Vec<Run>> {
     ))
 }
 
-/// Index construction helpers shared by the tests of several modules, so that
-/// path walking and searching can be exercised without an actual disk.
-#[cfg(test)]
-pub(crate) mod test_support {
+/// Index construction helpers for tests.
+///
+/// Public behind the `testing` feature so the application crate can exercise
+/// its own row building and formatting against a known index, instead of
+/// needing a real disk and administrator rights to test a string.
+#[cfg(any(test, feature = "testing"))]
+pub mod test_support {
     use super::*;
 
     pub struct Spec {

@@ -17,3 +17,6 @@ ferret-core = { path = "../ferret-core" }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+[dev-dependencies]
+ferret-core = { path = "../ferret-core", features = ["testing"] }

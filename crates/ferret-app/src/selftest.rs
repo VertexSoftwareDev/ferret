@@ -49,7 +49,11 @@ pub fn run() -> i32 {
     let built = Instant::now();
     let search = SearchIndex::build(&index);
     let build_time = built.elapsed();
-    let mut volume = Volume { index, search };
+    let mut volume = Volume {
+        index,
+        search,
+        generation: 0,
+    };
     let stats = volume.index.stats;
 
     println!("  files            : {}", stats.files);
