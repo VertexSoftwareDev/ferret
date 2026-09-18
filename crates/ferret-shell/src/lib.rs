@@ -29,12 +29,12 @@ pub mod selftest;
 pub mod state;
 pub mod watch;
 
+pub use engine::{
+    is_elevated, list_volumes, open_path, page, restart_elevated, reveal_path, scan, search, Row,
+    ScanProgress, SearchArgs, SearchResponse, VolumeInfo,
+};
 /// Re-exported so a front end needs only this crate: scanning takes options,
 /// and asking for them should not mean depending on the engine directly.
 pub use ferret_core::ScanOptions;
-pub use engine::{
-    is_elevated, list_volumes, open_path, page, restart_elevated, reveal_path, scan, search,
-    Row, ScanProgress, SearchArgs, SearchResponse, VolumeInfo,
-};
 pub use state::{AppState, Inner, LastResult, Volume};
 pub use watch::{IndexUpdate, WatchEvent};

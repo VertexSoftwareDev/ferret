@@ -53,11 +53,17 @@ const QUERY_ID: &str = "ferret-query";
 enum Phase {
     /// Before the first volume list has come back.
     Starting,
-    Scanning { letter: char, percent: u8 },
+    Scanning {
+        letter: char,
+        percent: u8,
+    },
     Ready,
     NoVolume,
     /// A scan failed for a reason that is not a permission problem.
-    ScanFailed { letter: char, message: String },
+    ScanFailed {
+        letter: char,
+        message: String,
+    },
     /// A scan failed because the process cannot read a raw volume.
     NeedsElevation,
 }
@@ -224,7 +230,10 @@ impl Ferret {
                 Event::Volumes(volumes) => self.choose_volume(volumes),
 
                 Event::ScanProgress { letter, percent } => {
-                    if let Phase::Scanning { letter: current, .. } = self.phase {
+                    if let Phase::Scanning {
+                        letter: current, ..
+                    } = self.phase
+                    {
                         if current == letter {
                             self.phase = Phase::Scanning { letter, percent };
                         }
@@ -464,7 +473,9 @@ impl Ferret {
     }
 
     fn selected_row(&self) -> Option<&Row> {
-        self.results.selected.and_then(|index| self.results.row(index))
+        self.results
+            .selected
+            .and_then(|index| self.results.row(index))
     }
 
     /// Narrow the search to the folder a result sits in.
@@ -657,7 +668,11 @@ impl Ferret {
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
-                            .button(if self.theme == Theme::Dark { "☀" } else { "☾" })
+                            .button(if self.theme == Theme::Dark {
+                                "☀"
+                            } else {
+                                "☾"
+                            })
                             .on_hover_text(strings.theme_tooltip)
                             .clicked()
                         {
@@ -768,7 +783,10 @@ impl Ferret {
                 ui.horizontal(|ui| {
                     let mut changed = false;
 
-                    if ui.checkbox(&mut self.files_only, strings.files_only).changed() {
+                    if ui
+                        .checkbox(&mut self.files_only, strings.files_only)
+                        .changed()
+                    {
                         // Files-only and folders-only are mutually exclusive;
                         // ticking one clears the other rather than silently
                         // returning nothing at all.
@@ -777,7 +795,10 @@ impl Ferret {
                         }
                         changed = true;
                     }
-                    if ui.checkbox(&mut self.dirs_only, strings.dirs_only).changed() {
+                    if ui
+                        .checkbox(&mut self.dirs_only, strings.dirs_only)
+                        .changed()
+                    {
                         if self.dirs_only {
                             self.files_only = false;
                         }
@@ -1111,7 +1132,11 @@ fn draw_table(
                             );
                         });
                         table_row.col(|ui| {
-                            let kind = if row.is_dir { strings.folder } else { &row.kind };
+                            let kind = if row.is_dir {
+                                strings.folder
+                            } else {
+                                &row.kind
+                            };
                             ui.add(
                                 egui::Label::new(egui::RichText::new(kind).color(palette.muted))
                                     .selectable(false)
@@ -1125,9 +1150,7 @@ fn draw_table(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
                                     ui.add(
-                                        egui::Label::new(&row.size)
-                                            .selectable(false)
-                                            .truncate(),
+                                        egui::Label::new(&row.size).selectable(false).truncate(),
                                     );
                                 },
                             );
@@ -1197,17 +1220,19 @@ fn draw_table(
 fn icon(ui: &mut egui::Ui, is_dir: bool, palette: &theme::Palette) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
     let painter = ui.painter();
-    let colour = if is_dir { palette.accent } else { palette.muted };
+    let colour = if is_dir {
+        palette.accent
+    } else {
+        palette.muted
+    };
 
     if is_dir {
         let body = egui::Rect::from_min_max(
             rect.left_top() + egui::vec2(1.0, 3.5),
             rect.right_bottom() - egui::vec2(1.0, 1.5),
         );
-        let tab = egui::Rect::from_min_size(
-            rect.left_top() + egui::vec2(1.0, 1.5),
-            egui::vec2(6.0, 2.5),
-        );
+        let tab =
+            egui::Rect::from_min_size(rect.left_top() + egui::vec2(1.0, 1.5), egui::vec2(6.0, 2.5));
         painter.rect_filled(tab, 1.0, colour);
         painter.rect_filled(body, 2.0, colour);
     } else {
@@ -1410,7 +1435,10 @@ mod tests {
     fn a_match_is_found_whatever_case_it_was_typed_in() {
         assert_eq!(find_ignoring_case("Rapor.pdf", "rapor"), Some((0, 5)));
         assert_eq!(find_ignoring_case("rapor.pdf", "RAPOR"), Some((0, 5)));
-        assert_eq!(find_ignoring_case("yillik-rapor.pdf", "rapor"), Some((7, 12)));
+        assert_eq!(
+            find_ignoring_case("yillik-rapor.pdf", "rapor"),
+            Some((7, 12))
+        );
         assert_eq!(find_ignoring_case("rapor.pdf", "PDF"), Some((6, 9)));
     }
 

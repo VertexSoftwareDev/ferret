@@ -31,10 +31,24 @@ volume. One sequential pass, and the whole disk is in memory.
   RESULT: passed
 ```
 
-That is real output from `ferret-app.exe --selftest` on a 1.8-million-record
-volume. It checks that every reconstructed path actually exists on disk, and
-that files created and deleted while it runs appear in and disappear from the
-index on their own.
+That is real output from `--selftest` on a 1.8-million-record volume. It checks
+that every reconstructed path actually exists on disk, and that files created and
+deleted while it runs appear in and disappear from the index on their own.
+
+## Two windows
+
+Ferret has two front ends over the same engine, and they do the same things:
+
+- **`ferret-native`** — one executable, drawn by [egui] with no browser engine
+  behind it. Start this one unless you have a reason not to.
+- **`ferret-app`** — the same application drawn by WebView2, through [Tauri].
+
+Everything below the window is shared, down to the change-journal rules, so
+neither can drift from the other. The measured differences, and why both are
+kept, are in [docs/TWO-WINDOWS.md](docs/TWO-WINDOWS.md).
+
+[egui]: https://github.com/emilk/egui
+[Tauri]: https://tauri.app
 
 ## Screenshots
 
@@ -72,7 +86,8 @@ run the app, press `Win+Shift+S`, and drop the images in `docs/`.
 ## Running it
 
 ```powershell
-cargo run --release -p ferret-app
+cargo run --release -p ferret-native   # one executable, no web view
+cargo run --release -p ferret-app      # the same thing, drawn by WebView2
 ```
 
 The development harness for the engine, which is where the numbers above come
@@ -87,8 +102,10 @@ cargo run --release -p ferret-cli -- bench C     # query timings
 And the end-to-end smoke test:
 
 ```powershell
-cargo run --release -p ferret-app -- --selftest
+cargo run --release -p ferret-native -- --selftest
 ```
+
+Both binaries offer it, and both run the same checks.
 
 ## Keyboard
 
@@ -133,12 +150,13 @@ There is a fuller walkthrough in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Layout
 
 ```
-crates/ferret-core/   NTFS reader, index and search engine (no Windows API deps)
-crates/ferret-cli/    Development harness: scan, find, bench
-crates/ferret-app/    Tauri desktop application
-ui/                   Front end: HTML, CSS, JavaScript — no framework
-ui/i18n.js            Every string the interface shows, in both languages
-scripts/              Icon generator
+crates/ferret-core/     NTFS reader, index and search engine (no Windows API deps)
+crates/ferret-shell/    Indexes, queries, row formatting, change-journal watcher
+crates/ferret-cli/      Development harness: scan, find, bench
+crates/ferret-native/   The native window: egui, one executable
+crates/ferret-app/      The web-view window: Tauri
+ui/                     Its front end: HTML, CSS, JavaScript — no framework
+scripts/                Icon generator
 ```
 
 ## Status
@@ -153,6 +171,10 @@ Working and measured on real volumes. Known limits:
   next full scan.
 - Sorting is skipped past 200 000 results: at that size the list is not
   something anyone reads in order, and the sort would cost a visible pause.
+- The native window draws in Segoe UI, which covers Latin, Greek and Cyrillic.
+  File names in Chinese, Japanese, Korean or Arabic fall back to egui's own font
+  and can show empty boxes; the web-view window has the whole system font stack
+  and does not.
 
 ## Licence
 

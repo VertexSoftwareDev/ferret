@@ -11,8 +11,8 @@ env:
 
 jobs:
   check:
-    # Ferret is Windows-only by construction: it reads raw NTFS volumes and
-    # builds a WebView2 window, so there is nothing meaningful to test elsewhere.
+    # Ferret is Windows-only by construction: it reads raw NTFS volumes, so
+    # there is nothing meaningful to test elsewhere.
     runs-on: windows-latest
 
     steps:
@@ -56,4 +56,4 @@ jobs:
       # The self-test needs administrator rights to read a raw volume, which a
       # hosted runner does not grant, so it is not part of CI. Run it locally
       # before tagging a release:
-      #     cargo run --release -p ferret-app -- --selftest
+      #     cargo run --release -p ferret-native -- --selftest

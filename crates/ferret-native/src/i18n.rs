@@ -233,7 +233,14 @@ impl Lang {
 
     /// The status bar's right half: what was indexed, how long it took, and
     /// that the index is being kept up to date.
-    pub fn volume_line(self, letter: &str, files: u64, dirs: u64, seconds: f64, memory: &str) -> String {
+    pub fn volume_line(
+        self,
+        letter: &str,
+        files: u64,
+        dirs: u64,
+        seconds: f64,
+        memory: &str,
+    ) -> String {
         let files = self.number(files);
         let dirs = self.number(dirs);
         match self {

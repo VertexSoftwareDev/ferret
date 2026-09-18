@@ -23,8 +23,15 @@ use ferret_shell::{
 pub enum Request {
     ListVolumes,
     Scan(char),
-    Search { args: SearchArgs, token: u64 },
-    Page { offset: usize, limit: usize, token: u64 },
+    Search {
+        args: SearchArgs,
+        token: u64,
+    },
+    Page {
+        offset: usize,
+        limit: usize,
+        token: u64,
+    },
     Open(String),
     Reveal(String),
     /// Whether this process can read a raw volume, asked only after a scan has
@@ -37,7 +44,10 @@ pub enum Request {
 #[derive(Debug)]
 pub enum Event {
     Volumes(Vec<VolumeInfo>),
-    ScanProgress { letter: char, percent: u8 },
+    ScanProgress {
+        letter: char,
+        percent: u8,
+    },
     Scanned(char, Result<VolumeInfo, String>),
     Searched {
         token: u64,
