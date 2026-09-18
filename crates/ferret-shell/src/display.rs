@@ -1,8 +1,8 @@
-//! Display formatting shared by the commands.
+//! Turning engine numbers into the strings a table shows.
 //!
-//! Formatting happens in Rust rather than in the web view because a result page
-//! is at most a screenful of rows: doing it here keeps the front end free of
-//! date and unit logic, and keeps the numbers identical to the CLI's.
+//! Formatting happens in Rust rather than in a front end because a result page
+//! is at most a screenful of rows: doing it here keeps both windows free of date
+//! and unit logic, and keeps their numbers identical to the CLI's.
 
 /// Human-readable byte size, e.g. `1.4 GB`. Directories have no size of their
 /// own, so they get an empty string rather than a misleading `0 B`.

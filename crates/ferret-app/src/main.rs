@@ -1,24 +1,22 @@
 //! Ferret — instant file search for Windows.
 //!
-//! The desktop shell. All of the work lives in `ferret-core`; this crate wires
-//! it to a web view and to the shell (open a file, show it in Explorer).
+//! The web-view window. Every line of work lives in `ferret-core` and
+//! `ferret-shell`; what is here is the wiring between those and a WebView2
+//! surface. The native window in `ferret-native` wires the same two crates to
+//! a different surface.
 
 // No console window behind the app in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
-mod format;
-mod selftest;
-mod state;
-mod watcher;
 
-use state::AppState;
+use ferret_shell::AppState;
 
 fn main() {
     // A headless pass over the real pipeline, for release gating and for
     // diagnosing a machine where the window itself cannot be inspected.
     if std::env::args().any(|arg| arg == "--selftest") {
-        std::process::exit(selftest::run());
+        std::process::exit(ferret_shell::selftest::run());
     }
 
     tauri::Builder::default()

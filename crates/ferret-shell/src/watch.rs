@@ -9,6 +9,11 @@
 //! One thread per indexed volume. It holds its own read-only volume handle so
 //! that polling never contends with a search, and takes the state lock only for
 //! the moment it applies a batch.
+//!
+//! What it has to say goes to a `sink` the caller provides, because the two
+//! front ends listen in different ways: the web view turns each event into a
+//! Tauri event, and the native window drops it on a channel and asks egui to
+//! repaint. Neither arrangement belongs in here.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -17,7 +22,6 @@ use std::time::{Duration, Instant, UNIX_EPOCH};
 use ferret_core::journal::{self, Change};
 use ferret_core::{SearchIndex, Volume};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
 
 use crate::state::AppState;
 
@@ -36,8 +40,18 @@ const REBUILD_EVERY: Duration = Duration::from_millis(1_500);
 /// Bumped whenever a volume is rescanned, which retires any older watcher.
 static GENERATION: AtomicU64 = AtomicU64::new(0);
 
+/// What a watcher tells the window.
+#[derive(Serialize, Clone, Debug)]
+pub enum WatchEvent {
+    /// A batch of changes landed, and these are the volume's new counts.
+    Updated(IndexUpdate),
+    /// The journal wrapped or was reset, so the index can no longer be patched
+    /// and only a rescan will do. Carries the operating system's own wording.
+    Stale(String),
+}
+
 /// What the front end is told after a batch of changes lands.
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, Debug)]
 pub struct IndexUpdate {
     pub letter: String,
     pub applied: usize,
@@ -54,16 +68,19 @@ pub fn retire_all() {
 ///
 /// Returns quietly when the volume has no journal — that is a normal
 /// configuration, and the app simply keeps its snapshot until a manual refresh.
-pub fn spawn(app: AppHandle, state: AppState, letter: char) {
+pub fn spawn<S>(state: AppState, letter: char, sink: S)
+where
+    S: Fn(WatchEvent) + Send + 'static,
+{
     let generation = GENERATION.load(Ordering::SeqCst);
 
     std::thread::Builder::new()
         .name(format!("ferret-watch-{letter}"))
-        .spawn(move || run(app, state, letter, generation))
+        .spawn(move || run(&sink, state, letter, generation))
         .ok();
 }
 
-fn run(app: AppHandle, state: AppState, letter: char, generation: u64) {
+fn run(sink: &dyn Fn(WatchEvent), state: AppState, letter: char, generation: u64) {
     let Ok(volume) = Volume::open(letter) else {
         return;
     };
@@ -98,7 +115,7 @@ fn run(app: AppHandle, state: AppState, letter: char, generation: u64) {
                 Err(err) => {
                     // The journal was reset or wrapped past our position: the
                     // index can no longer be patched, so ask for a rescan.
-                    let _ = app.emit("index-stale", err.to_string());
+                    sink(WatchEvent::Stale(err.to_string()));
                     return;
                 }
             }
@@ -124,7 +141,7 @@ fn run(app: AppHandle, state: AppState, letter: char, generation: u64) {
         }
 
         if update.applied > 0 {
-            let _ = app.emit("index-updated", update);
+            sink(WatchEvent::Updated(update));
         }
     }
 }

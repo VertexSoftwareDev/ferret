@@ -1,0 +1,13 @@
+[package]
+name = "ferret-shell"
+description = "Everything a Ferret window needs that is not the window itself: indexes, queries, formatting, and the change-journal watcher."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ferret-core = { path = "../ferret-core" }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+ferret-core = { path = "../ferret-core", features = ["testing"] }

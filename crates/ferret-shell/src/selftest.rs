@@ -1,7 +1,7 @@
-//! Headless smoke test: `ferret-app.exe --selftest`.
+//! Headless smoke test: `--selftest`, offered by both windows.
 //!
 //! The window cannot be inspected from a script, but everything behind it can.
-//! This drives the exact code the commands use — scan, build the search index,
+//! This drives the exact code a window uses — scan, build the search index,
 //! run queries, render rows — against a real volume and then checks the result
 //! the only way that really counts: by asking Windows whether the paths Ferret
 //! reconstructed actually exist.
@@ -14,7 +14,7 @@ use std::time::Instant;
 use ferret_core::journal;
 use ferret_core::{scan_with, Query, ScanOptions, SearchIndex, SortBy};
 
-use crate::commands::build_rows;
+use crate::engine::build_rows;
 use crate::state::Volume;
 
 /// Queries the smoke test runs: common, rare, path-scoped and no-hit.

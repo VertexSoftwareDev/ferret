@@ -775,6 +775,7 @@ name = "ferret-app"
 version = "0.1.0"
 dependencies = [
  "ferret-core",
+ "ferret-shell",
  "serde",
  "serde_json",
  "tauri",
@@ -791,6 +792,21 @@ dependencies = [
 [[package]]
 name = "ferret-core"
 version = "0.1.0"
+
+[[package]]
+name = "ferret-native"
+version = "0.1.0"
+dependencies = [
+ "ferret-shell",
+]
+
+[[package]]
+name = "ferret-shell"
+version = "0.1.0"
+dependencies = [
+ "ferret-core",
+ "serde",
+]
 
 [[package]]
 name = "field-offset"

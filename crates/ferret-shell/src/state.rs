@@ -44,7 +44,7 @@ pub struct Inner {
     pub last: LastResult,
 }
 
-/// Handle shared with every Tauri command.
+/// Handle shared by the window, the engine and the watcher.
 #[derive(Clone, Default)]
 pub struct AppState(pub Arc<RwLock<Inner>>);
 
