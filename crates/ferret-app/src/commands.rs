@@ -122,6 +122,8 @@ pub async fn scan_volume(
         return Err("surucu harfi bos".into());
     };
     let state = state.inner().clone();
+    // One clone for the scan itself, one for the watcher it starts afterwards.
+    let for_watcher = state.clone();
 
     let _ = app.emit("scan-progress", format!("{letter}: taranıyor…"));
 
@@ -147,6 +149,12 @@ pub async fn scan_volume(
     })
     .await
     .map_err(|e| e.to_string())??;
+
+    // Any watcher from a previous scan is now looking at a replaced index.
+    crate::watcher::retire_all();
+    if let Some(letter) = info.letter.chars().next() {
+        crate::watcher::spawn(app.clone(), for_watcher, letter);
+    }
 
     let _ = app.emit("scan-done", &info.letter);
     Ok(info)

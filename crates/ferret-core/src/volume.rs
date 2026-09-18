@@ -100,6 +100,12 @@ impl Volume {
         })
     }
 
+    /// The underlying handle, for the `DeviceIoControl` calls the change
+    /// journal needs. Still read-only: nothing here ever opens for writing.
+    pub fn file(&self) -> &File {
+        &self.file
+    }
+
     /// Total volume size in bytes.
     pub fn size_bytes(&self) -> u64 {
         self.total_sectors * self.bytes_per_sector as u64

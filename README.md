@@ -23,11 +23,18 @@ volume. One sequential pass, and the whole disk is in memory.
   zzqqxxnope                                0     3.67 ms
 
   yol dogrulama    : 200/200 yol diskte bulundu
+
+  canli guncelleme
+      olusturulan 25 dosyadan bulunan : 25
+      silindikten sonra kalan             : 0
+
+  SONUC: gecti
 ```
 
 That is real output from `ferret-app.exe --selftest` on a 1.8-million-file
-volume, including the check that every reconstructed path actually exists on
-disk.
+volume. It checks that every reconstructed path actually exists on disk, and
+that files created and deleted while it runs appear and disappear from the
+index on their own.
 
 ## What it does
 
@@ -38,6 +45,9 @@ disk.
 - **Searches paths too.** Type `belgeler\rapor` and only that folder's matches
   come back — without ever materialising a million path strings.
 - **Sorts and filters** by name, size, date, kind, and hidden/system attributes.
+- **Stays current.** Ferret tails the NTFS change journal, so files created,
+  renamed or deleted while it is open show up within about a second — no
+  re-scan.
 - **Opens what you find**: double-click, Enter, reveal in Explorer, copy path.
 - **Reads only.** Ferret opens volumes for reading and never writes a byte back.
 
@@ -101,6 +111,11 @@ Getting it right takes more than reading bytes in order:
 - **Search cost.** Lowercasing names per keystroke costs ~100 ms per query on a
   large volume. Lowercasing once into one contiguous arena — and searching that
   in parallel — costs 3–12 ms.
+- **Stale snapshots.** The change journal names the record that changed, but
+  re-reading that record from the raw volume returns stale bytes: raw reads
+  bypass the filesystem cache, so a file created a second ago is still blank on
+  the platter. The journal entry's own name, parent and attributes are the
+  correct source.
 
 There is a fuller walkthrough in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -119,8 +134,11 @@ scripts/              Icon generator
 Working and measured on real volumes. Known limits:
 
 - NTFS only. FAT32 and exFAT volumes are listed but cannot be indexed.
-- The index is a snapshot; press `F5` to re-read the volume. Live updates via the
-  USN change journal are the next step.
+- Live updates need the volume's USN journal to be enabled, which it is by
+  default on the system drive. Without it, Ferret keeps its snapshot until `F5`.
+- Renaming a file appends its new name to the name arena and leaves the old
+  bytes behind; a long session with heavy churn slowly grows memory until the
+  next full scan.
 - The interface is in Turkish.
 
 ## Licence

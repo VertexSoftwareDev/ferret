@@ -40,6 +40,10 @@ pub const IS_DIR: u16 = 1 << 0;
 pub const IS_HIDDEN: u16 = 1 << 1;
 pub const IS_SYSTEM: u16 = 1 << 2;
 pub const IS_READONLY: u16 = 1 << 3;
+/// Set when the change journal reported the file gone. The entry stays in place
+/// so that positions — and therefore the prebuilt search arena — remain valid;
+/// queries filter it out.
+pub const IS_DELETED: u16 = 1 << 4;
 
 /// One indexed file or directory.
 ///
@@ -67,6 +71,9 @@ impl Entry {
     }
     pub fn is_system(&self) -> bool {
         self.flags & IS_SYSTEM != 0
+    }
+    pub fn is_deleted(&self) -> bool {
+        self.flags & IS_DELETED != 0
     }
 }
 
@@ -110,6 +117,15 @@ pub struct ScanStats {
     pub total_time: Duration,
 }
 
+/// What [`Index::refresh_record`] did.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Refresh {
+    /// The entry is different from what it was.
+    pub changed: bool,
+    /// A name was added or replaced, so the search arena is now stale.
+    pub names_changed: bool,
+}
+
 /// An in-memory index of one volume.
 ///
 /// Entries are stored densely — a 2 M record MFT is typically 10 % free space,
@@ -122,6 +138,11 @@ pub struct Index {
     names: String,
     /// `record number -> position in entries`, or [`NO_ENTRY`].
     by_record: Vec<u32>,
+    /// Where `$MFT` lives on the volume, kept so single records can be re-read
+    /// when the change journal reports them modified.
+    runs: Vec<Run>,
+    bytes_per_record: u32,
+    bytes_per_cluster: u64,
     pub stats: ScanStats,
 }
 
@@ -218,6 +239,223 @@ impl Index {
             out.push_str(part);
         }
         true
+    }
+
+    /// Physical byte offset of one MFT record, following the `$MFT` run list.
+    ///
+    /// Returns `None` for a record beyond the table, or one inside a sparse
+    /// region — neither has bytes to read.
+    fn record_offset(&self, record: u32) -> Option<u64> {
+        let want = record as u64 * self.bytes_per_record as u64;
+        let mut seen = 0u64;
+
+        for run in &self.runs {
+            let bytes = run.clusters * self.bytes_per_cluster;
+            if want < seen + bytes {
+                let lcn = run.lcn?;
+                return Some(lcn * self.bytes_per_cluster + (want - seen));
+            }
+            seen += bytes;
+        }
+        None
+    }
+
+    /// Re-read one MFT record from the volume and fold it into the index.
+    ///
+    /// This is what makes the change journal cheap: a notification names a
+    /// record, and updating the index costs one 1 KB read rather than a rescan.
+    /// A record that has been freed, has become unreadable, or turns out to be
+    /// an NTFS metafile is marked deleted instead.
+    ///
+    /// Fold one change-journal entry into the index.
+    ///
+    /// Everything but the size comes from the journal entry itself. That is not
+    /// a shortcut — it is the only correct source. Ferret reads volumes raw,
+    /// which bypasses the filesystem cache, so the MFT record of a file created
+    /// a second ago is still blank on disk; re-reading it would lose almost
+    /// every change. `size` and `modified` are supplied by the caller, which can
+    /// stat the path through the normal filesystem and see current data.
+    pub fn apply_change(
+        &mut self,
+        change: &crate::journal::Change,
+        stat: Option<(u64, u64)>,
+    ) -> Refresh {
+        let names_before = self.names.len();
+
+        let changed = if change.is_delete() {
+            self.mark_deleted(change.record)
+        } else {
+            let mut flags = 0u16;
+            if change.is_dir() {
+                flags |= IS_DIR;
+            }
+            if change.is_hidden() {
+                flags |= IS_HIDDEN;
+            }
+            if change.is_system() {
+                flags |= IS_SYSTEM;
+            }
+
+            // Without a stat, keep whatever size and time the entry already has
+            // rather than reporting a file as empty.
+            let previous = self.position_of(change.record).map(|p| self.entries[p]);
+            let fallback = match previous {
+                Some(entry) => (entry.size, entry.modified),
+                None => (0, 0),
+            };
+            let (size, modified) = stat.unwrap_or(fallback);
+
+            self.upsert(
+                change.record,
+                ParsedEntry {
+                    parent: change.parent,
+                    name: change.name.clone(),
+                    size,
+                    modified,
+                    flags,
+                },
+            )
+        };
+
+        Refresh {
+            changed,
+            names_changed: self.names.len() != names_before,
+        }
+    }
+
+    /// Returns what the update touched.
+    #[allow(dead_code)]
+    pub fn refresh_record(&mut self, volume: &mut Volume, record: u32) -> io::Result<Refresh> {
+        // Names are only ever appended, so the arena growing is an exact signal
+        // that a name was added or changed — which is the only case that forces
+        // the search arena to be rebuilt.
+        let names_before = self.names.len();
+
+        let changed = match self.record_offset(record) {
+            None => self.mark_deleted(record),
+            Some(offset) => {
+                let mut raw = vec![0u8; self.bytes_per_record as usize];
+                volume.read_at(offset, &mut raw)?;
+
+                let sector = volume.bytes_per_sector as usize;
+                match parse_entry(&mut raw, sector, record) {
+                    ParseOutcome::Live(parsed) if !is_system_record(record, &parsed) => {
+                        self.upsert(record, parsed)
+                    }
+                    _ => self.mark_deleted(record),
+                }
+            }
+        };
+
+        Ok(Refresh {
+            changed,
+            names_changed: self.names.len() != names_before,
+        })
+    }
+
+    /// Keep the file and directory counts true as entries come and go.
+    fn count(&mut self, is_dir: bool, delta: i64) {
+        let counter = if is_dir {
+            &mut self.stats.dirs
+        } else {
+            &mut self.stats.files
+        };
+        *counter = counter.saturating_add_signed(delta);
+    }
+
+    /// Insert or update one entry. Returns whether anything changed.
+    fn upsert(&mut self, record: u32, parsed: ParsedEntry) -> bool {
+        let mut flags = parsed.flags;
+        // An entry can come back after having been deleted, if the record was
+        // reused for a new file.
+        flags &= !IS_DELETED;
+
+        if let Some(position) = self.position_of(record) {
+            let existing = self.entries[position];
+            let same_name = self.name(position) == parsed.name;
+
+            if same_name
+                && existing.parent == parsed.parent
+                && existing.size == parsed.size
+                && existing.modified == parsed.modified
+                && existing.flags == flags
+            {
+                return false;
+            }
+
+            // Names are append-only: rewriting the arena in place would shift
+            // every later offset. A rename leaks its old bytes until the next
+            // full scan, which is a fair trade for O(1) updates.
+            let (name_offset, name_len) = if same_name {
+                (existing.name_offset, existing.name_len)
+            } else {
+                self.push_name(&parsed.name)
+            };
+
+            // A record can come back as a different kind of thing, or return
+            // from the dead when NTFS reuses its number.
+            if existing.is_deleted() {
+                self.count(flags & IS_DIR != 0, 1);
+            } else if existing.is_dir() != (flags & IS_DIR != 0) {
+                self.count(existing.is_dir(), -1);
+                self.count(flags & IS_DIR != 0, 1);
+            }
+
+            self.entries[position] = Entry {
+                record,
+                parent: parsed.parent,
+                size: parsed.size,
+                modified: parsed.modified,
+                name_offset,
+                name_len,
+                flags,
+            };
+            return true;
+        }
+
+        let (name_offset, name_len) = self.push_name(&parsed.name);
+        let position = self.entries.len() as u32;
+        self.entries.push(Entry {
+            record,
+            parent: parsed.parent,
+            size: parsed.size,
+            modified: parsed.modified,
+            name_offset,
+            name_len,
+            flags,
+        });
+
+        if record as usize >= self.by_record.len() {
+            self.by_record.resize(record as usize + 1, NO_ENTRY);
+        }
+        self.by_record[record as usize] = position;
+        self.count(flags & IS_DIR != 0, 1);
+        true
+    }
+
+    /// Flag an entry as gone. Returns whether it was there to begin with.
+    fn mark_deleted(&mut self, record: u32) -> bool {
+        let Some(position) = self.position_of(record) else {
+            return false;
+        };
+        if self.entries[position].flags & IS_DELETED != 0 {
+            return false;
+        }
+        self.entries[position].flags |= IS_DELETED;
+        let was_dir = self.entries[position].is_dir();
+        self.count(was_dir, -1);
+        true
+    }
+
+    fn position_of(&self, record: u32) -> Option<usize> {
+        let slot = *self.by_record.get(record as usize)?;
+        (slot != NO_ENTRY).then_some(slot as usize)
+    }
+
+    fn push_name(&mut self, name: &str) -> (u32, u16) {
+        let offset = self.names.len() as u32;
+        self.names.push_str(name);
+        (offset, name.len() as u16)
     }
 
     /// Directory that contains the entry at `position`, without the file name.
@@ -356,6 +594,9 @@ pub fn scan_with(letter: char, options: ScanOptions) -> io::Result<Index> {
         entries,
         names,
         by_record,
+        runs,
+        bytes_per_record: volume.bytes_per_record,
+        bytes_per_cluster: volume.bytes_per_cluster,
         stats,
     })
 }
@@ -682,6 +923,9 @@ pub(crate) mod test_support {
             entries,
             names,
             by_record,
+            runs: Vec::new(),
+            bytes_per_record: 1024,
+            bytes_per_cluster: 4096,
             stats: ScanStats::default(),
         }
     }
@@ -799,6 +1043,135 @@ mod tests {
         let removed = retain_reachable(&mut index.entries, &mut index.names, &mut index.by_record);
         assert_eq!(removed, 2);
         assert!(index.is_empty());
+    }
+
+    fn parsed(parent: u32, name: &str, size: u64) -> ParsedEntry {
+        ParsedEntry {
+            parent,
+            name: name.to_string(),
+            size,
+            modified: 0,
+            flags: 0,
+        }
+    }
+
+    #[test]
+    fn upsert_adds_a_new_entry() {
+        let mut index = index_from_specs(vec![dir(20, ROOT_RECORD, "Users")]);
+
+        assert!(index.upsert(30, parsed(20, "yeni.txt", 100)));
+        assert_eq!(index.len(), 2);
+        assert_eq!(index.full_path(1).as_deref(), Some(r"C:\Users\yeni.txt"));
+        assert_eq!(index.by_record(30).map(|(p, _)| p), Some(1));
+    }
+
+    #[test]
+    fn upsert_updates_in_place_and_reports_no_change_when_identical() {
+        let mut index = index_from_specs(vec![
+            dir(20, ROOT_RECORD, "Users"),
+            file(21, 20, "eski.txt"),
+        ]);
+
+        // A rename must be visible, and must not disturb the other entry.
+        assert!(index.upsert(21, parsed(20, "yeni.txt", 42)));
+        assert_eq!(index.name(1), "yeni.txt");
+        assert_eq!(index.entries()[1].size, 42);
+        assert_eq!(index.name(0), "Users");
+        assert_eq!(index.len(), 2);
+
+        // Applying the very same state again is a no-op.
+        assert!(!index.upsert(21, parsed(20, "yeni.txt", 42)));
+    }
+
+    #[test]
+    fn deleting_hides_an_entry_without_moving_the_others() {
+        let mut index = index_from_specs(vec![
+            dir(20, ROOT_RECORD, "Users"),
+            file(21, 20, "a.txt"),
+            file(22, 20, "b.txt"),
+        ]);
+
+        assert!(index.mark_deleted(21));
+        assert!(index.entries()[1].is_deleted());
+        // Positions must survive, or the prebuilt search arena would be wrong.
+        assert_eq!(index.name(2), "b.txt");
+        assert!(!index.entries()[2].is_deleted());
+
+        // Deleting twice changes nothing.
+        assert!(!index.mark_deleted(21));
+        // Deleting something that was never indexed is harmless.
+        assert!(!index.mark_deleted(999));
+    }
+
+    #[test]
+    fn the_counts_track_live_changes() {
+        let mut index =
+            index_from_specs(vec![dir(20, ROOT_RECORD, "Users"), file(21, 20, "a.txt")]);
+        index.stats.dirs = 1;
+        index.stats.files = 1;
+
+        index.upsert(22, parsed(20, "b.txt", 0));
+        assert_eq!((index.stats.files, index.stats.dirs), (2, 1));
+
+        index.mark_deleted(21);
+        assert_eq!((index.stats.files, index.stats.dirs), (1, 1));
+
+        // Deleting twice must not double-count.
+        index.mark_deleted(21);
+        assert_eq!(index.stats.files, 1);
+
+        // And bringing it back counts once.
+        index.upsert(21, parsed(20, "a.txt", 0));
+        assert_eq!(index.stats.files, 2);
+    }
+
+    #[test]
+    fn a_recycled_record_comes_back_to_life() {
+        let mut index =
+            index_from_specs(vec![dir(20, ROOT_RECORD, "Users"), file(21, 20, "a.txt")]);
+        index.mark_deleted(21);
+
+        // NTFS reuses record numbers; the slot must be usable again.
+        assert!(index.upsert(21, parsed(20, "baska.txt", 7)));
+        assert!(!index.entries()[1].is_deleted());
+        assert_eq!(index.name(1), "baska.txt");
+    }
+
+    #[test]
+    fn record_offsets_follow_the_run_list() {
+        let mut index = index_from_specs(vec![dir(20, ROOT_RECORD, "Users")]);
+        index.bytes_per_record = 1024;
+        index.bytes_per_cluster = 4096;
+        // Two extents: 2 clusters at 100, then 2 clusters at 500.
+        index.runs = vec![
+            Run {
+                lcn: Some(100),
+                clusters: 2,
+            },
+            Run {
+                lcn: Some(500),
+                clusters: 2,
+            },
+        ];
+
+        // Record 0 sits at the start of the first extent.
+        assert_eq!(index.record_offset(0), Some(100 * 4096));
+        // Record 3 is the last one in the first extent (8 records per extent).
+        assert_eq!(index.record_offset(3), Some(100 * 4096 + 3 * 1024));
+        // Record 8 crosses into the second extent.
+        assert_eq!(index.record_offset(8), Some(500 * 4096));
+        // Past the end of the table there is nothing to read.
+        assert_eq!(index.record_offset(16), None);
+    }
+
+    #[test]
+    fn a_sparse_region_has_no_offset() {
+        let mut index = index_from_specs(vec![dir(20, ROOT_RECORD, "Users")]);
+        index.runs = vec![Run {
+            lcn: None,
+            clusters: 4,
+        }];
+        assert_eq!(index.record_offset(0), None);
     }
 
     #[test]

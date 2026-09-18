@@ -340,19 +340,32 @@ async function scan(letter) {
 
 /** What the window title says when no query is active. */
 let volumeTitle = 'Ferret';
+/** The indexed volume, kept so the journal can refresh its counts in place. */
+let volume = null;
+let liveCount = 0;
+let liveDirs = 0;
 
 function titleForVolume() {
   return volumeTitle;
 }
 
 function setVolumeInfo(info) {
-  const files = info.files.toLocaleString('tr-TR');
-  const dirs = info.dirs.toLocaleString('tr-TR');
-  el.volumeInfo.textContent =
-    `${info.letter}:  ${files} dosya · ${dirs} klasör · ` +
-    `${info.scan_seconds.toFixed(1)} sn'de tarandı · ${info.memory}`;
+  volume = info;
+  liveCount = info.files;
+  liveDirs = info.dirs;
+  refreshVolumeLine();
+}
 
-  volumeTitle = `Ferret — ${info.letter}: ${files} dosya`;
+function refreshVolumeLine() {
+  if (!volume) return;
+  const files = liveCount.toLocaleString('tr-TR');
+  const dirs = liveDirs.toLocaleString('tr-TR');
+
+  el.volumeInfo.textContent =
+    `${volume.letter}:  ${files} dosya · ${dirs} klasör · ` +
+    `${volume.scan_seconds.toFixed(1)} sn'de tarandı · ${volume.memory}  ·  canlı`;
+
+  volumeTitle = `Ferret — ${volume.letter}: ${files} dosya`;
   if (!el.query.value) setWindowTitle(volumeTitle);
 }
 
@@ -643,6 +656,31 @@ window.addEventListener('keydown', (event) => {
 
 listen('scan-progress', (message) => {
   if (state.scanning) el.overlayDetail.textContent = message;
+});
+
+/**
+ * The change journal folded new activity into the index.
+ *
+ * The counts are refreshed always, but the result list is only re-run when the
+ * user is sitting at the top of it. Re-sorting the ground under someone who is
+ * scrolling through results is worse than showing them a row that is a few
+ * seconds out of date.
+ */
+listen('index-updated', (update) => {
+  if (!update || update.letter !== state.letter) return;
+
+  liveCount = update.files;
+  liveDirs = update.dirs;
+  refreshVolumeLine();
+
+  if (!state.scanning && el.viewport.scrollTop < ROW_HEIGHT * 2) {
+    scheduleSearch();
+  }
+});
+
+/** The journal wrapped or was reset: the index can no longer be patched. */
+listen('index-stale', () => {
+  showNotice('Disk çok değişti; güncel sonuçlar için F5 ile yeniden tara.');
 });
 
 /* ------------------------------------------------------------------ *

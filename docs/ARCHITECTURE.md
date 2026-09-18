@@ -156,6 +156,40 @@ Sorting is applied after matching, not during, so a query returning half the dis
 still answers instantly. Past 200 000 hits the sort is skipped and the UI says
 so: at that size the list is not something anyone reads in order anyway.
 
+## Staying current
+
+A scan is true for one instant. NTFS keeps a circular log of every change — the
+**USN journal** — and each entry names the MFT record it concerns, along with
+that file's name, its parent and its attributes. A background thread per volume
+polls it roughly twice a second through `FSCTL_READ_USN_JOURNAL`.
+
+The obvious way to apply a change is to re-read the MFT record it names. That is
+wrong, and quietly so. Ferret reads volumes **raw**, which bypasses the
+filesystem cache: a file created a second ago still has an empty record on the
+platter, so re-reading finds nothing and the change is lost. Measured on a test
+that created fifty files, only two were picked up.
+
+The journal entry already carries everything an index entry needs except the
+size, so that is what gets applied — and the size comes from a normal
+`metadata()` call on the reconstructed path, which does see the cache.
+
+Three details keep this cheap:
+
+- **Collapsing.** One save produces several entries for the same file: create,
+  extend, close. They are reduced to the last state per record before anything
+  is applied, which also avoids repeating the `metadata()` call.
+- **Deleting without moving.** A deleted entry keeps its slot and gains a flag.
+  Removing it would shift every later position and invalidate the prebuilt
+  search arena; queries simply skip flagged entries.
+- **Rebuilding rarely.** The arena only goes stale when a *name* appears or
+  changes. Size and time updates leave it alone, and deletions are filtered, so
+  the 100 ms rebuild happens at most once every 1.5 seconds and often not at
+  all.
+
+If the journal is disabled, or has wrapped past where Ferret was reading, the
+index cannot be patched. The app says so and asks for `F5` rather than showing
+results it can no longer vouch for.
+
 ## The application layer
 
 The window is a web view; all the work stays in Rust.

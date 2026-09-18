@@ -10,6 +10,7 @@ mod commands;
 mod format;
 mod selftest;
 mod state;
+mod watcher;
 
 use state::AppState;
 

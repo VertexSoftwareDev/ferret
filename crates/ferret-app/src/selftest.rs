@@ -11,6 +11,7 @@
 
 use std::time::Instant;
 
+use ferret_core::journal;
 use ferret_core::{scan_with, Query, ScanOptions, SearchIndex, SortBy};
 
 use crate::commands::build_rows;
@@ -48,7 +49,7 @@ pub fn run() -> i32 {
     let built = Instant::now();
     let search = SearchIndex::build(&index);
     let build_time = built.elapsed();
-    let volume = Volume { index, search };
+    let mut volume = Volume { index, search };
     let stats = volume.index.stats;
 
     println!("  dosya            : {}", stats.files);
@@ -147,6 +148,9 @@ pub fn run() -> i32 {
     }
 
     println!();
+    failures += live_update_check(&mut volume);
+
+    println!();
     if failures == 0 {
         println!("  SONUC: gecti");
         0
@@ -154,6 +158,136 @@ pub fn run() -> i32 {
         println!("  SONUC: {failures} kontrol basarisiz");
         1
     }
+}
+
+/// How many files the live-update check creates.
+const LIVE_FILES: usize = 25;
+
+/// Prove that the change journal actually keeps the index current.
+///
+/// Counting entries is not enough — a busy machine creates and deletes files
+/// underneath the test. So this writes files whose names cannot collide with
+/// anything else on the disk, then asks the *search index* for them: found
+/// means the journal path works end to end, from `DeviceIoControl` through to a
+/// query hit. The files are removed again, and their disappearance checked too.
+fn live_update_check(volume: &mut crate::state::Volume) -> u32 {
+    println!("  canli guncelleme");
+
+    let letter = volume.index.letter;
+    let Ok(raw) = ferret_core::Volume::open(letter) else {
+        println!("      atlandi: birim acilamadi");
+        return 0;
+    };
+    let mut cursor = match journal::cursor_at_end(&raw) {
+        Ok(cursor) => cursor,
+        Err(err) => {
+            // A volume without a journal is a supported configuration.
+            println!("      atlandi: {err}");
+            return 0;
+        }
+    };
+
+    // A tag no other file on the volume can share.
+    let tag = format!(
+        "ferretselftest{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    );
+    let dir = std::env::temp_dir().join(&tag);
+    if std::fs::create_dir_all(&dir).is_err() {
+        println!("      atlandi: gecici klasor olusturulamadi");
+        return 0;
+    }
+
+    for i in 0..LIVE_FILES {
+        let _ = std::fs::write(dir.join(format!("{tag}_{i}.txt")), b"ferret");
+    }
+
+    // The files are `<tag>_N.txt` while their folder is plain `<tag>`, so
+    // searching for the trailing underscore counts the files and not the folder
+    // they sit in.
+    let needle = format!("{tag}_");
+
+    let created = drain_and_count(volume, &raw, &mut cursor, &needle);
+    println!("      olusturulan {LIVE_FILES} dosyadan bulunan : {created}");
+
+    for i in 0..LIVE_FILES {
+        let _ = std::fs::remove_file(dir.join(format!("{tag}_{i}.txt")));
+    }
+
+    let remaining = drain_and_count(volume, &raw, &mut cursor, &needle);
+    println!("      silindikten sonra kalan             : {remaining}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let mut failures = 0;
+    if created < LIVE_FILES {
+        eprintln!("      BASARISIZ: {created}/{LIVE_FILES} dosya indekse islenmedi");
+        failures += 1;
+    }
+    if remaining > 0 {
+        eprintln!("      BASARISIZ: silinen {remaining} dosya hala indekste");
+        failures += 1;
+    }
+    failures
+}
+
+/// Read the journal until it goes quiet, apply everything, and count how many
+/// entries matching `tag` the search index now returns.
+fn drain_and_count(
+    volume: &mut crate::state::Volume,
+    raw: &ferret_core::Volume,
+    cursor: &mut journal::Cursor,
+    needle: &str,
+) -> usize {
+    // Windows writes journal entries a moment after the call returns, so the
+    // loop keeps asking until two consecutive reads come back empty.
+    let mut quiet = 0;
+    for _ in 0..40 {
+        std::thread::sleep(std::time::Duration::from_millis(150));
+        match journal::read(raw, cursor) {
+            Ok(changes) if changes.is_empty() => {
+                quiet += 1;
+                if quiet >= 3 {
+                    break;
+                }
+            }
+            Ok(changes) => {
+                quiet = 0;
+                for change in &changes {
+                    let stat = if change.is_delete() {
+                        None
+                    } else {
+                        volume
+                            .index
+                            .by_record(change.parent)
+                            .and_then(|(position, _)| volume.index.full_path(position))
+                            .and_then(|parent| {
+                                let path = format!("{parent}\\{}", change.name);
+                                std::fs::symlink_metadata(&path).ok().map(|m| (m.len(), 0))
+                            })
+                    };
+                    volume.index.apply_change(change, stat);
+                }
+            }
+            Err(_) => break,
+        }
+    }
+
+    volume.search = SearchIndex::build(&volume.index);
+    volume
+        .search
+        .run(
+            &volume.index,
+            &Query {
+                text: needle.to_string(),
+                sort_by: SortBy::None,
+                ..Default::default()
+            },
+        )
+        .len()
 }
 
 /// First drive whose raw volume can actually be opened.

@@ -229,13 +229,15 @@ impl SearchIndex {
             });
         }
 
-        if !query.filter.is_noop() {
-            let entries = index.entries();
-            hits.retain(|hit| match entries.get(*hit as usize) {
-                Some(entry) => query.filter.keeps(entry),
-                None => false,
-            });
-        }
+        // Deleted entries keep their slot so the prebuilt arena stays valid, so
+        // they have to be dropped here — unconditionally, not only when the
+        // user has set a filter.
+        let needs_filter = !query.filter.is_noop();
+        let entries = index.entries();
+        hits.retain(|hit| match entries.get(*hit as usize) {
+            Some(entry) => !entry.is_deleted() && (!needs_filter || query.filter.keeps(entry)),
+            None => false,
+        });
 
         sort_hits(index, &mut hits, query.sort_by, query.order);
         hits

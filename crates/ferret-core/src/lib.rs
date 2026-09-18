@@ -11,6 +11,7 @@
 #![cfg(windows)]
 
 pub mod bytes;
+pub mod journal;
 pub mod mft;
 pub mod record;
 pub mod runs;
