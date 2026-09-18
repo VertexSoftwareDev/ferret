@@ -76,6 +76,18 @@ function links(text) {
   );
 }
 
+/**
+ * A link's name with the language taken out of it.
+ *
+ * A screenshot of the Turkish interface belongs in the Turkish file, so those
+ * two targets have to differ. Folding them to one name rather than skipping
+ * them keeps the check worth running: a Turkish file pointing at the English
+ * screenshot is still a mistake, and this still catches it.
+ */
+function canonical(target) {
+  return target.replace(/-(?:en|tr)(\.[a-z0-9]+)$/i, '-<lang>$1');
+}
+
 /* ---------------------------------------------------------------- *
  * Structure
  * ---------------------------------------------------------------- */
@@ -145,14 +157,33 @@ if (englishBlocks.length !== turkishBlocks.length) {
 const englishLinks = links(english.text).sort();
 const turkishLinks = links(turkish.text).sort();
 
-if (englishLinks.join('\n') !== turkishLinks.join('\n')) {
-  const missing = englishLinks.filter((link) => !turkishLinks.includes(link));
-  const extra = turkishLinks.filter((link) => !englishLinks.includes(link));
+const englishNames = englishLinks.map(canonical).sort();
+const turkishNames = turkishLinks.map(canonical).sort();
+
+if (englishNames.join('\n') !== turkishNames.join('\n')) {
+  const missing = englishNames.filter((link) => !turkishNames.includes(link));
+  const extra = turkishNames.filter((link) => !englishNames.includes(link));
   if (missing.length) {
     problems.push(`${turkish.name} is missing links: ${missing.join(', ')}`);
   }
   if (extra.length) {
     problems.push(`${turkish.name} has links ${english.name} does not: ${extra.join(', ')}`);
+  }
+}
+
+// Folding `-en` and `-tr` to one name above means the comparison can no longer
+// tell them apart, so each file is asked separately whether its
+// language-specific links are in its own language. Without this, the Turkish
+// README could show the English screenshot and nothing would object.
+for (const { file, suffix } of [
+  { file: english, suffix: 'en' },
+  { file: turkish, suffix: 'tr' },
+]) {
+  for (const target of links(file.text)) {
+    const found = target.match(/-(en|tr)\.[a-z0-9]+$/i);
+    if (found && found[1].toLowerCase() !== suffix) {
+      problems.push(`${file.name} links to the ${found[1]} version of ${target}`);
+    }
   }
 }
 

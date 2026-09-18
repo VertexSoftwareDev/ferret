@@ -60,8 +60,11 @@ differences, are in [docs/TWO-WINDOWS.md](docs/TWO-WINDOWS.md).
 
 ## Screenshots
 
-Not checked in yet — grab them from your own disk, where the file names are real:
-run the app, press `Win+Shift+S`, and drop the images in `docs/`.
+![Ferret listing every DLL under Windows\System32, largest first](docs/screenshot-en.png)
+
+A path query with a wildcard in it. 2,710 matches out of 1.4 million files,
+sorted by size, in 31 ms — and the status bar adds them up to 6.5 GB, which is
+usually the question behind a search like that one.
 
 ## What it does
 

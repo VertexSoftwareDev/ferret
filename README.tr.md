@@ -61,9 +61,11 @@ kadar; dolayısıyla biri diğerinden sapamaz. Ölçümler ve farkların tam lis
 
 ## Ekran görüntüleri
 
-Henüz depoya eklenmedi — kendi diskinizden alın, dosya adları orada gerçek:
-uygulamayı çalıştırın, `Win+Shift+S` ile kırpın ve görüntüleri `docs/` içine
-bırakın.
+![Ferret, Windows\System32 altındaki bütün DLL'leri en büyükten sıralıyor](docs/screenshot-tr.png)
+
+Joker karakterli bir yol sorgusu. 1,4 milyon dosya içinden 2.710 eşleşme, boyuta
+göre sıralı, 27 ms'de — ve durum çubuğu hepsini toplayıp 6,5 GB diyor, ki böyle
+bir aramanın ardındaki soru genellikle budur.
 
 ## Ne yapar
 
