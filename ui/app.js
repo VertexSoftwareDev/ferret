@@ -40,6 +40,8 @@ const el = {
   overlayDetail: document.getElementById('overlay-detail'),
   overlayAction: document.getElementById('overlay-action'),
   spinner: document.getElementById('spinner'),
+  progress: document.getElementById('progress'),
+  progressFill: document.getElementById('progress-fill'),
   menu: document.getElementById('menu'),
   empty: document.getElementById('empty'),
   emptyTitle: document.getElementById('empty-title'),
@@ -458,6 +460,7 @@ async function scan(letter) {
   state.scanning = true;
   el.rescan.classList.add('busy');
   showOverlay(t.scanning(letter), t.scanningDetail);
+  setProgress(0);
 
   try {
     const info = await call('scan_volume', { letter });
@@ -530,6 +533,8 @@ function showOverlay(title, detail, actionLabel, action) {
   el.overlayTitle.textContent = title;
   el.overlayDetail.textContent = detail || '';
   el.spinner.hidden = Boolean(actionLabel);
+  // A bar belongs to a scan; an error screen gets a button instead.
+  el.progress.hidden = true;
 
   if (actionLabel) {
     el.overlayAction.textContent = actionLabel;
@@ -813,8 +818,21 @@ window.addEventListener('keydown', (event) => {
   }
 });
 
-listen('scan-progress', (message) => {
-  if (state.scanning) el.overlayDetail.textContent = message;
+/**
+ * Show how far the scan has got.
+ *
+ * Seven seconds behind a spinner that says nothing is the app's worst moment;
+ * a bar that visibly moves turns the same wait into something ordinary.
+ */
+function setProgress(percent) {
+  el.progress.hidden = false;
+  el.progressFill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+}
+
+listen('scan-progress', (progress) => {
+  if (state.scanning && progress && progress.letter === state.letter) {
+    setProgress(progress.percent);
+  }
 });
 
 /**

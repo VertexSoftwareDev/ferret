@@ -8,11 +8,11 @@
 //!     ferret find  C report
 //!     ferret bench C
 
-use std::io;
+use std::io::{self, Write};
 use std::process::ExitCode;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-use ferret_core::{human_size, scan_with, Index, ScanOptions, SearchIndex};
+use ferret_core::{human_size, scan_with_progress, Index, ScanOptions, SearchIndex};
 
 /// Queries the benchmark runs; a mix of common, rare and no-hit needles.
 const BENCH_QUERIES: &[&str] = &["a", "e", "exe", "dll", "report", "setup", "zzqqxx"];
@@ -74,8 +74,36 @@ fn drive_letter(arg: Option<&&String>) -> char {
     arg.and_then(|s| s.chars().next()).unwrap_or('C')
 }
 
+/// Index a volume, drawing a progress line that rewrites itself in place.
+///
+/// Seven seconds of silence looks like a hang. The line is erased once the scan
+/// finishes so it never gets in the way of output that is piped somewhere.
+fn scan_with_feedback(letter: char, options: ScanOptions) -> io::Result<Index> {
+    let mut last = Instant::now() - Duration::from_secs(1);
+
+    let index = scan_with_progress(letter, options, |progress| {
+        if last.elapsed() < Duration::from_millis(100) {
+            return;
+        }
+        last = Instant::now();
+        let percent = (progress.fraction() * 100.0).round() as u8;
+        let filled = (percent as usize) / 4;
+        print!(
+            "\rreading {}: [{}{}] {percent:>3}%",
+            letter,
+            "#".repeat(filled),
+            ".".repeat(25 - filled)
+        );
+        let _ = io::stdout().flush();
+    })?;
+
+    print!("\r{}\r", " ".repeat(48));
+    let _ = io::stdout().flush();
+    Ok(index)
+}
+
 fn cmd_scan(letter: char, options: ScanOptions) -> io::Result<()> {
-    let index = scan_with(letter, options)?;
+    let index = scan_with_feedback(letter, options)?;
     print_summary(&index);
 
     let built = Instant::now();
@@ -105,7 +133,7 @@ fn cmd_scan(letter: char, options: ScanOptions) -> io::Result<()> {
 }
 
 fn cmd_find(letter: char, needle: &str, options: ScanOptions) -> io::Result<()> {
-    let index = scan_with(letter, options)?;
+    let index = scan_with_feedback(letter, options)?;
     print_summary(&index);
     let search = SearchIndex::build(&index);
 
@@ -135,7 +163,7 @@ fn cmd_find(letter: char, needle: &str, options: ScanOptions) -> io::Result<()> 
 }
 
 fn cmd_bench(letter: char, options: ScanOptions) -> io::Result<()> {
-    let index = scan_with(letter, options)?;
+    let index = scan_with_feedback(letter, options)?;
     print_summary(&index);
 
     let started = Instant::now();

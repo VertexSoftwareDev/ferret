@@ -8,7 +8,7 @@
 
 use std::process::Command;
 
-use ferret_core::{scan_with, Filter, Query, ScanOptions, SearchIndex, SortBy, SortOrder};
+use ferret_core::{scan_with_progress, Filter, Query, ScanOptions, SearchIndex, SortBy, SortOrder};
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, State};
 
@@ -37,6 +37,19 @@ pub struct VolumeInfo {
     pub scan_seconds: f64,
     pub memory: String,
 }
+
+/// Sent to the window while a scan runs, so the wait has a bar rather than a
+/// spinner. Throttled: a scan fires the callback dozens of times a second and
+/// the web view has better things to do.
+#[derive(Serialize, Clone)]
+pub struct ScanProgress {
+    pub letter: String,
+    /// 0 to 100.
+    pub percent: u8,
+}
+
+/// Progress events are emitted no more often than this.
+const PROGRESS_EVERY: std::time::Duration = std::time::Duration::from_millis(120);
 
 #[derive(Serialize, Debug)]
 pub struct SearchResponse {
@@ -125,10 +138,24 @@ pub async fn scan_volume(
     // One clone for the scan itself, one for the watcher it starts afterwards.
     let for_watcher = state.clone();
 
-    let _ = app.emit("scan-progress", format!("{letter}: taranıyor…"));
+    let reporter = app.clone();
 
     let info = tauri::async_runtime::spawn_blocking(move || -> Result<VolumeInfo, String> {
-        let index = scan_with(letter, ScanOptions::default()).map_err(describe_io)?;
+        let mut last = std::time::Instant::now() - PROGRESS_EVERY;
+        let index = scan_with_progress(letter, ScanOptions::default(), |progress| {
+            if last.elapsed() < PROGRESS_EVERY {
+                return;
+            }
+            last = std::time::Instant::now();
+            let _ = reporter.emit(
+                "scan-progress",
+                ScanProgress {
+                    letter: letter.to_string(),
+                    percent: (progress.fraction() * 100.0).round() as u8,
+                },
+            );
+        })
+        .map_err(describe_io)?;
         let search = SearchIndex::build(&index);
         let volume = Volume { index, search };
 

@@ -409,6 +409,25 @@ impl Index {
     }
 }
 
+/// How far a scan has got, for a progress bar.
+#[derive(Debug, Clone, Copy)]
+pub struct Progress {
+    pub records_done: u64,
+    /// Estimated from the size of `$MFT`; the table can grow mid-scan, so treat
+    /// this as an upper bound rather than a promise.
+    pub records_total: u64,
+}
+
+impl Progress {
+    /// 0.0 to 1.0, clamped — a growing table must not report 130 %.
+    pub fn fraction(&self) -> f64 {
+        if self.records_total == 0 {
+            return 0.0;
+        }
+        (self.records_done as f64 / self.records_total as f64).clamp(0.0, 1.0)
+    }
+}
+
 /// Scan a volume with the default options.
 pub fn scan(letter: char) -> io::Result<Index> {
     scan_with(letter, ScanOptions::default())
@@ -416,6 +435,19 @@ pub fn scan(letter: char) -> io::Result<Index> {
 
 /// Scan a whole volume and return its index.
 pub fn scan_with(letter: char, options: ScanOptions) -> io::Result<Index> {
+    scan_with_progress(letter, options, |_| {})
+}
+
+/// Scan a whole volume, reporting progress as it goes.
+///
+/// `on_progress` is called once per read chunk — a few dozen times for a whole
+/// disk — so a caller that wants to throttle further can, and one that does not
+/// will not drown.
+pub fn scan_with_progress(
+    letter: char,
+    options: ScanOptions,
+    mut on_progress: impl FnMut(Progress),
+) -> io::Result<Index> {
     let started = Instant::now();
     let mut volume = Volume::open(letter)?;
 
@@ -464,6 +496,11 @@ pub fn scan_with(letter: char, options: ScanOptions) -> io::Result<Index> {
             let read_started = Instant::now();
             volume.read_at(lcn * volume.bytes_per_cluster + consumed, slice)?;
             stats.read_time += read_started.elapsed();
+
+            on_progress(Progress {
+                records_done: record_number,
+                records_total: estimated as u64,
+            });
 
             for raw in slice.chunks_mut(record_size) {
                 let number = record_number as u32;
@@ -1073,6 +1110,25 @@ mod tests {
         assert!(index.upsert(21, parsed(20, "baska.txt", 7)));
         assert!(!index.entries()[1].is_deleted());
         assert_eq!(index.name(1), "baska.txt");
+    }
+
+    #[test]
+    fn progress_is_a_clamped_fraction() {
+        let at = |done, total| {
+            Progress {
+                records_done: done,
+                records_total: total,
+            }
+            .fraction()
+        };
+
+        assert_eq!(at(0, 100), 0.0);
+        assert_eq!(at(50, 100), 0.5);
+        assert_eq!(at(100, 100), 1.0);
+        // The table can grow mid-scan, so the count can pass the estimate.
+        assert_eq!(at(130, 100), 1.0);
+        // And an unknown total must not divide by zero.
+        assert_eq!(at(10, 0), 0.0);
     }
 
     #[test]

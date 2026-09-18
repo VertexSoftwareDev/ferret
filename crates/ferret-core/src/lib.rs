@@ -18,6 +18,9 @@ pub mod runs;
 pub mod search;
 pub mod volume;
 
-pub use mft::{filetime_to_unix, scan, scan_with, Entry, Index, ScanOptions, ScanStats};
+pub use mft::{
+    filetime_to_unix, scan, scan_with, scan_with_progress, Entry, Index, Progress, ScanOptions,
+    ScanStats,
+};
 pub use search::{sort_hits, Filter, Hit, Query, SearchIndex, SortBy, SortOrder};
 pub use volume::{human_size, Volume};
