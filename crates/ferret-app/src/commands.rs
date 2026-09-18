@@ -119,7 +119,7 @@ pub async fn scan_volume(
     letter: String,
 ) -> Result<VolumeInfo, String> {
     let Some(letter) = letter.chars().next() else {
-        return Err("surucu harfi bos".into());
+        return Err("no_drive_letter".into());
     };
     let state = state.inner().clone();
     // One clone for the scan itself, one for the watcher it starts afterwards.
@@ -169,7 +169,7 @@ pub async fn search(
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let Some(letter) = args.letter.chars().next() else {
-            return Err("surucu harfi bos".to_string());
+            return Err("no_drive_letter".to_string());
         };
         let limit = args.limit.unwrap_or(200).min(2_000);
 
@@ -192,7 +192,7 @@ pub async fn search(
 
         let mut inner = state.write();
         let Some(volume) = inner.volumes.get(&letter) else {
-            return Err(format!("{letter}: henüz taranmadı"));
+            return Err(format!("not_indexed:{letter}"));
         };
 
         // Matching first, then sorting — so a query that returns half the disk
@@ -299,7 +299,7 @@ pub async fn restart_elevated(app: tauri::AppHandle) -> Result<(), String> {
         .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command"])
         .arg(format!("Start-Process -FilePath '{quoted}' -Verb RunAs"))
         .spawn()
-        .map_err(|e| format!("yeniden başlatılamadı: {e}"))?;
+        .map_err(|e| format!("restart_failed:{e}"))?;
 
     app.exit(0);
     Ok(())
@@ -314,7 +314,7 @@ pub async fn open_path(path: String) -> Result<(), String> {
         .arg(&path)
         .spawn()
         .map(|_| ())
-        .map_err(|e| format!("açılamadı: {e}"))
+        .map_err(|e| format!("open_failed:{e}"))
 }
 
 /// Open the containing folder with the file selected.
@@ -325,7 +325,7 @@ pub async fn reveal_path(path: String) -> Result<(), String> {
         .arg(&path)
         .spawn()
         .map(|_| ())
-        .map_err(|e| format!("klasör açılamadı: {e}"))
+        .map_err(|e| format!("reveal_failed:{e}"))
 }
 
 pub(crate) fn build_rows(volume: &Volume, hits: &[u32], offset: usize, limit: usize) -> Vec<Row> {
@@ -367,13 +367,17 @@ fn parse_sort(value: &str) -> SortBy {
     }
 }
 
-/// Turn an io error into something a person can act on.
+/// Turn an io error into a code the front end can phrase in the user's own
+/// language.
+///
+/// Errors cross the boundary as `code` or `code:detail` rather than as finished
+/// sentences: the window can be switched between Turkish and English at any
+/// moment, and a message baked in Rust would be stuck in whichever language it
+/// was written in.
 fn describe_io(err: std::io::Error) -> String {
     match err.kind() {
-        std::io::ErrorKind::PermissionDenied => {
-            "Erişim reddedildi. Ferret'i yönetici olarak çalıştırman gerekiyor.".to_string()
-        }
-        std::io::ErrorKind::NotFound => "Sürücü bulunamadı.".to_string(),
-        _ => err.to_string(),
+        std::io::ErrorKind::PermissionDenied => "needs_elevation".to_string(),
+        std::io::ErrorKind::NotFound => "drive_not_found".to_string(),
+        _ => format!("scan_failed:{err}"),
     }
 }

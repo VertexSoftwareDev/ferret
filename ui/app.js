@@ -26,6 +26,7 @@ const DEBOUNCE_MS = 90;
 const el = {
   query: document.getElementById('query'),
   drive: document.getElementById('drive'),
+  lang: document.getElementById('lang'),
   rescan: document.getElementById('rescan'),
   theme: document.getElementById('theme'),
   viewport: document.getElementById('viewport'),
@@ -74,7 +75,7 @@ const useMock = !tauri && new URLSearchParams(location.search).has('mock');
 async function call(command, args) {
   if (tauri) return tauri.core.invoke(command, args);
   if (useMock) return mockCall(command, args);
-  throw new Error('Ferret arka ucu bulunamadı.');
+  throw new Error('no_backend');
 }
 
 function listen(event, handler) {
@@ -93,6 +94,62 @@ function setWindowTitle(title) {
   if (tauri?.window?.getCurrentWindow) {
     tauri.window.getCurrentWindow().setTitle(title).catch(() => {});
   }
+}
+
+/* ------------------------------------------------------------------ *
+ * Language
+ * ------------------------------------------------------------------ */
+
+let lang = initialLanguage();
+/** The active string table. Read through this, never from a literal. */
+let t = I18N[lang];
+
+/** Format a number the way the chosen language writes numbers. */
+function num(value) {
+  return value.toLocaleString(t.locale);
+}
+
+/**
+ * Turn a backend error into a sentence.
+ *
+ * Rust sends `code` or `code:detail`; anything unrecognised is shown as it
+ * arrived, because an OS message is more useful than "something went wrong".
+ */
+function say(error) {
+  const text = String(error && error.message ? error.message : error);
+  const cut = text.indexOf(':');
+  const code = cut < 0 ? text : text.slice(0, cut);
+  const detail = cut < 0 ? '' : text.slice(cut + 1);
+
+  const entry = t.errors[code];
+  if (!entry) return text;
+  return typeof entry === 'function' ? entry(detail) : entry;
+}
+
+function applyLanguage(code) {
+  lang = I18N[code] ? code : 'en';
+  t = I18N[lang];
+  document.documentElement.lang = lang;
+  el.lang.value = lang;
+  rememberLanguage(lang);
+
+  for (const node of document.querySelectorAll('[data-i18n]')) {
+    node.textContent = t[node.dataset.i18n] ?? '';
+  }
+  for (const node of document.querySelectorAll('[data-i18n-placeholder]')) {
+    node.placeholder = t[node.dataset.i18nPlaceholder] ?? '';
+  }
+  for (const node of document.querySelectorAll('[data-i18n-title]')) {
+    node.title = t[node.dataset.i18nTitle] ?? '';
+  }
+  for (const node of document.querySelectorAll('[data-i18n-aria]')) {
+    node.setAttribute('aria-label', t[node.dataset.i18nAria] ?? '');
+  }
+
+  // Anything already on screen was worded in the previous language.
+  refreshVolumeLine();
+  refreshCount();
+  render();
 }
 
 /* ------------------------------------------------------------------ *
@@ -133,7 +190,7 @@ function rowHtml(row, index) {
     `<div class="row${selected}" data-index="${index}" role="row">` +
     `<div class="cell name">${row.isDir ? DIR_ICON : FILE_ICON}<span>${highlight(row.name, state.needle)}</span></div>` +
     `<div class="cell path" title="${escapeHtml(row.folder)}">${escapeHtml(row.folder)}</div>` +
-    `<div class="cell kind">${escapeHtml(row.kind)}</div>` +
+    `<div class="cell kind">${escapeHtml(row.isDir ? t.folder : row.kind)}</div>` +
     `<div class="cell size">${escapeHtml(row.size)}</div>` +
     `<div class="cell date">${escapeHtml(row.modified)}</div>` +
     '</div>'
@@ -203,7 +260,7 @@ function ensureWindow(first, last) {
     })
     .catch((err) => {
       state.pendingWindow = null;
-      showNotice(String(err));
+      showNotice(say(err));
     });
 }
 
@@ -212,6 +269,8 @@ function ensureWindow(first, last) {
  * ------------------------------------------------------------------ */
 
 let debounceTimer = null;
+/** Milliseconds the last query took, kept so the status bar can be re-worded. */
+let lastTiming = null;
 
 function scheduleSearch() {
   clearTimeout(debounceTimer);
@@ -254,22 +313,29 @@ async function runSearch() {
     el.sizer.style.height = `${state.total * ROW_HEIGHT}px`;
     el.viewport.scrollTop = 0;
 
-    const totalText = result.total.toLocaleString('tr-TR');
-    el.count.textContent = `${totalText} sonuç  ·  ${result.took_ms.toFixed(1)} ms`;
-    // The window title carries the count too, so the taskbar says something
-    // useful when Ferret is minimised.
-    setWindowTitle(el.query.value ? `Ferret — ${totalText} sonuç` : titleForVolume());
+    lastTiming = result.took_ms;
+    refreshCount();
 
     if (result.sort_skipped) {
-      showNotice('Sonuç kümesi çok büyük olduğu için sıralama uygulanmadı.');
+      showNotice(t.sortSkipped);
     } else {
       hideNotice();
     }
 
     render();
   } catch (err) {
-    showNotice(String(err));
+    showNotice(say(err));
   }
+}
+
+/** The status bar's left half, and the window title that mirrors it. */
+function refreshCount() {
+  if (lastTiming === null) return;
+  const total = num(state.total);
+  el.count.textContent = `${t.results(total)}  ·  ${t.timing(lastTiming.toFixed(1))}`;
+  // The window title carries the count too, so the taskbar says something
+  // useful when Ferret is minimised.
+  setWindowTitle(el.query.value ? t.titleResults(total) : titleForVolume());
 }
 
 /* ------------------------------------------------------------------ *
@@ -285,7 +351,7 @@ async function loadVolumes() {
   const indexed = volumes.find((v) => v.indexed);
   const preferred = indexed || volumes.find((v) => v.letter === 'C') || volumes[0];
   if (!preferred) {
-    showOverlay('NTFS sürücüsü bulunamadı', 'Ferret yalnızca NTFS birimlerini okuyabilir.');
+    showOverlay(t.noVolumeTitle, t.noVolumeDetail);
     return;
   }
 
@@ -304,10 +370,7 @@ async function loadVolumes() {
 async function scan(letter) {
   state.scanning = true;
   el.rescan.classList.add('busy');
-  showOverlay(
-    `${letter}: taranıyor`,
-    'Ana dosya tablosu okunuyor. Bu, diskin tamamı için birkaç saniye sürer.',
-  );
+  showOverlay(t.scanning(letter), t.scanningDetail);
 
   try {
     const info = await call('scan_volume', { letter });
@@ -324,14 +387,13 @@ async function scan(letter) {
     const elevated = await call('is_elevated').catch(() => true);
     if (!elevated) {
       showOverlay(
-        'Yönetici izni gerekiyor',
-        'Ferret, diski doğrudan okuyarak indeksliyor; Windows bunun için yönetici izni istiyor. ' +
-          'Diske yalnızca okuma yapılır, hiçbir şey yazılmaz.',
-        'Yönetici olarak yeniden başlat',
-        () => call('restart_elevated').catch((e) => showNotice(String(e))),
+        t.elevationTitle,
+        t.elevationDetail,
+        t.elevationAction,
+        () => call('restart_elevated').catch((e) => showNotice(say(e))),
       );
     } else {
-      showOverlay('Taranamadı', String(err), 'Tekrar dene', () => scan(letter));
+      showOverlay(t.scanFailed, say(err), t.retry, () => scan(letter));
     }
   } finally {
     el.rescan.classList.remove('busy');
@@ -358,14 +420,18 @@ function setVolumeInfo(info) {
 
 function refreshVolumeLine() {
   if (!volume) return;
-  const files = liveCount.toLocaleString('tr-TR');
-  const dirs = liveDirs.toLocaleString('tr-TR');
+  const files = num(liveCount);
+  const dirs = num(liveDirs);
 
-  el.volumeInfo.textContent =
-    `${volume.letter}:  ${files} dosya · ${dirs} klasör · ` +
-    `${volume.scan_seconds.toFixed(1)} sn'de tarandı · ${volume.memory}  ·  canlı`;
+  el.volumeInfo.textContent = t.volumeLine(
+    volume.letter,
+    files,
+    dirs,
+    volume.scan_seconds.toFixed(1),
+    volume.memory,
+  );
 
-  volumeTitle = `Ferret — ${volume.letter}: ${files} dosya`;
+  volumeTitle = t.titleVolume(volume.letter, files);
   if (!el.query.value) setWindowTitle(volumeTitle);
 }
 
@@ -430,7 +496,7 @@ async function activate(row) {
   try {
     await call('open_path', { path: row.path });
   } catch (err) {
-    showNotice(String(err));
+    showNotice(say(err));
   }
 }
 
@@ -439,7 +505,7 @@ async function reveal(row) {
   try {
     await call('reveal_path', { path: row.path });
   } catch (err) {
-    showNotice(String(err));
+    showNotice(say(err));
   }
 }
 
@@ -448,8 +514,9 @@ async function copyPath(row) {
   try {
     await navigator.clipboard.writeText(row.path);
   } catch {
-    // Clipboard can be denied; fall back to a selectable prompt-free notice.
-    showNotice('Pano kullanılamadı: ' + row.path);
+    // Clipboard can be denied; fall back to showing the path so it can still
+    // be copied by hand.
+    showNotice(t.clipboardFailed(row.path));
   }
 }
 
@@ -519,6 +586,8 @@ el.drive.addEventListener('change', async () => {
 el.rescan.addEventListener('click', () => {
   if (!state.scanning && state.letter) scan(state.letter);
 });
+
+el.lang.addEventListener('change', () => applyLanguage(el.lang.value));
 
 el.theme.addEventListener('click', () => {
   const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
@@ -680,7 +749,7 @@ listen('index-updated', (update) => {
 
 /** The journal wrapped or was reset: the index can no longer be patched. */
 listen('index-stale', () => {
-  showNotice('Disk çok değişti; güncel sonuçlar için F5 ile yeniden tara.');
+  showNotice(t.indexStale);
 });
 
 /* ------------------------------------------------------------------ *
@@ -700,7 +769,7 @@ function mockCall(command, args) {
         name,
         path: `C:\\Users\\pc\\Ornek\\${i % 50}\\${name}`,
         folder: `C:\\Users\\pc\\Ornek\\${i % 50}`,
-        kind: isDir ? 'Klasör' : exts[i % exts.length].toUpperCase(),
+        kind: isDir ? '' : exts[i % exts.length].toUpperCase(),
         size: isDir ? '' : `${((i % 900) + 1) / 10} MB`,
         size_bytes: (i % 900) * 1024,
         modified: `2026-0${(i % 9) + 1}-1${i % 9} 1${i % 9}:0${i % 6}`,
@@ -744,13 +813,9 @@ function mockCall(command, args) {
  * ------------------------------------------------------------------ */
 
 initTheme();
+applyLanguage(lang);
 el.query.focus();
 
 loadVolumes().catch((err) => {
-  showOverlay(
-    'Başlatılamadı',
-    String(err),
-    'Tekrar dene',
-    () => loadVolumes().catch(() => {}),
-  );
+  showOverlay(t.startFailed, say(err), t.retry, () => loadVolumes().catch(() => {}));
 });

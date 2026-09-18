@@ -54,6 +54,9 @@ run the app, press `Win+Shift+S`, and drop the images in `docs/`.
   renamed or deleted while it is open show up within about a second — no
   re-scan.
 - **Opens what you find**: double-click, Enter, reveal in Explorer, copy path.
+- **Speaks English or Turkish**, switched from the toolbar and remembered. Only
+  the interface changes: file names, paths and dates come from the disk exactly
+  as the filesystem has them.
 - **Reads only.** Ferret opens volumes for reading and never writes a byte back.
 
 ## Requirements
@@ -130,7 +133,8 @@ There is a fuller walkthrough in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 crates/ferret-core/   NTFS reader, index and search engine (no Windows API deps)
 crates/ferret-cli/    Development harness: scan, find, bench
 crates/ferret-app/    Tauri desktop application
-ui/                   Front end: HTML, CSS, one JavaScript file, no framework
+ui/                   Front end: HTML, CSS, JavaScript — no framework
+ui/i18n.js            Every string the interface shows, in both languages
 scripts/              Icon generator
 ```
 
@@ -144,7 +148,8 @@ Working and measured on real volumes. Known limits:
 - Renaming a file appends its new name to the name arena and leaves the old
   bytes behind; a long session with heavy churn slowly grows memory until the
   next full scan.
-- The interface is in Turkish.
+- The command-line harness prints in Turkish; the application itself is
+  bilingual.
 
 ## Licence
 

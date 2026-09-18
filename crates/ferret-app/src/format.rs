@@ -57,11 +57,13 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
     (if month <= 2 { year + 1 } else { year }, month, day)
 }
 
-/// File extension in upper case, for the type column. Directories report
-/// nothing; a name with no dot reports nothing.
+/// File extension in upper case, for the type column.
+///
+/// Directories return nothing: the row already carries `is_dir`, and the front
+/// end words it in whichever language is selected.
 pub fn kind(name: &str, is_dir: bool) -> String {
     if is_dir {
-        return "Klasör".to_string();
+        return String::new();
     }
     match name.rsplit_once('.') {
         // A leading dot means a dotfile, not an extension.
@@ -105,6 +107,7 @@ mod tests {
         assert_eq!(kind("archive.tar.gz", false), "GZ");
         assert_eq!(kind("Makefile", false), "");
         assert_eq!(kind(".gitignore", false), "");
-        assert_eq!(kind("Belgeler", true), "Klasör");
+        // A directory's type is worded by the front end, not here.
+        assert_eq!(kind("Belgeler", true), "");
     }
 }
