@@ -53,7 +53,10 @@ run the app, press `Win+Shift+S`, and drop the images in `docs/`.
 - **Stays current.** Ferret tails the NTFS change journal, so files created,
   renamed or deleted while it is open show up within about a second — no
   re-scan.
-- **Opens what you find**: double-click, Enter, reveal in Explorer, copy path.
+- **Adds up what it found.** The status bar carries the combined size of the
+  matches, which is the question behind most size-filtered searches.
+- **Opens what you find**: double-click, Enter, reveal in Explorer, copy path,
+  or narrow the search to the folder a result sits in.
 - **Speaks English or Turkish**, switched from the toolbar and remembered. Only
   the interface changes: file names, paths and dates come from the disk exactly
   as the filesystem has them.

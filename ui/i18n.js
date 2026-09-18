@@ -38,6 +38,7 @@ const I18N = {
     menuOpen: 'Aç',
     menuReveal: 'Klasörde göster',
     menuCopy: 'Yolu kopyala',
+    menuSearchHere: 'Bu klasörde ara',
 
     preparing: 'Hazırlanıyor…',
     scanning: (letter) => `${letter}: taranıyor`,
@@ -68,6 +69,7 @@ const I18N = {
     clipboardFailed: (path) => `Pano kullanılamadı: ${path}`,
 
     results: (count) => `${count} sonuç`,
+    totalSize: (size) => `toplam ${size}`,
     timing: (ms) => `${ms} ms`,
     volumeLine: (letter, files, dirs, seconds, memory) =>
       `${letter}:  ${files} dosya · ${dirs} klasör · ${seconds} sn'de tarandı · ${memory}  ·  canlı`,
@@ -112,6 +114,7 @@ const I18N = {
     menuOpen: 'Open',
     menuReveal: 'Show in folder',
     menuCopy: 'Copy path',
+    menuSearchHere: 'Search in this folder',
 
     preparing: 'Getting ready…',
     scanning: (letter) => `Indexing ${letter}:`,
@@ -140,6 +143,7 @@ const I18N = {
     clipboardFailed: (path) => `Clipboard unavailable: ${path}`,
 
     results: (count) => `${count} results`,
+    totalSize: (size) => `${size} in total`,
     timing: (ms) => `${ms} ms`,
     volumeLine: (letter, files, dirs, seconds, memory) =>
       `${letter}:  ${files} files · ${dirs} folders · indexed in ${seconds} s · ${memory}  ·  live`,

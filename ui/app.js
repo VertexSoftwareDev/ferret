@@ -359,6 +359,8 @@ function ensureWindow(first, last) {
 let debounceTimer = null;
 /** Milliseconds the last query took, kept so the status bar can be re-worded. */
 let lastTiming = null;
+/** Combined size of the last result set, already formatted by the backend. */
+let lastSize = '';
 
 function scheduleSearch() {
   clearTimeout(debounceTimer);
@@ -402,6 +404,7 @@ async function runSearch() {
     el.viewport.scrollTop = 0;
 
     lastTiming = result.took_ms;
+    lastSize = result.total_size || '';
     refreshCount();
 
     if (result.sort_skipped) {
@@ -420,7 +423,11 @@ async function runSearch() {
 function refreshCount() {
   if (lastTiming === null) return;
   const total = num(state.total);
-  el.count.textContent = `${t.results(total)}  ·  ${t.timing(lastTiming.toFixed(1))}`;
+  const parts = [t.results(total)];
+  // The total size only says something once there is something to add up.
+  if (state.total > 0 && lastSize) parts.push(t.totalSize(lastSize));
+  parts.push(t.timing(lastTiming.toFixed(1)));
+  el.count.textContent = parts.join('  ·  ');
   // The window title carries the count too, so the taskbar says something
   // useful when Ferret is minimised.
   setWindowTitle(el.query.value ? t.titleResults(total) : titleForVolume());
@@ -601,6 +608,24 @@ async function reveal(row) {
   }
 }
 
+/**
+ * Narrow the search to the folder a result sits in.
+ *
+ * Finding one file and then wanting its neighbours is the commonest follow-up
+ * there is, and retyping the path by hand is the commonest annoyance.
+ */
+function searchInFolder(row) {
+  if (!row) return;
+  // A folder's own name scopes to itself; a file scopes to its parent.
+  const folder = row.isDir ? row.path : row.folder;
+  const drive = `${state.letter}:\\`;
+  const relative = folder.startsWith(drive) ? folder.slice(drive.length) : folder;
+
+  el.query.value = relative ? `${relative}\\` : '';
+  el.query.focus();
+  runSearch();
+}
+
 async function copyPath(row) {
   if (!row) return;
   try {
@@ -741,6 +766,7 @@ el.menu.addEventListener('click', (event) => {
   if (action === 'open') activate(row);
   if (action === 'reveal') reveal(row);
   if (action === 'copy') copyPath(row);
+  if (action === 'here') searchInFolder(row);
 });
 
 window.addEventListener('mousedown', (event) => {
@@ -905,6 +931,7 @@ function mockCall(command, args) {
     mockCall.hits = all.filter((r) => r.name.toLowerCase().includes(needle));
     return Promise.resolve({
       total: mockCall.hits.length,
+      total_size: '1.4 GB',
       took_ms: 4.2,
       rows: mockCall.hits.slice(0, args.args.limit || 400),
       sort_skipped: false,

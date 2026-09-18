@@ -54,6 +54,9 @@ const PROGRESS_EVERY: std::time::Duration = std::time::Duration::from_millis(120
 #[derive(Serialize, Debug)]
 pub struct SearchResponse {
     pub total: usize,
+    /// Combined size of every matching file, already formatted. Answers the
+    /// question behind most size-filtered searches: how much is this costing me?
+    pub total_size: String,
     pub took_ms: f64,
     pub rows: Vec<Row>,
     /// True when the sort was skipped because the result set was enormous.
@@ -247,6 +250,17 @@ pub async fn search(
         let rows = build_rows(volume, &hits, 0, limit);
         let total = hits.len();
 
+        // Directories carry no size of their own, so counting them would
+        // double the answer for anyone who left folders in the results.
+        let entries = volume.index.entries();
+        let total_bytes: u64 = hits
+            .iter()
+            .filter_map(|hit| entries.get(*hit as usize))
+            .filter(|entry| !entry.is_dir())
+            .map(|entry| entry.size)
+            .sum();
+        let total_size = ferret_core::human_size(total_bytes);
+
         inner.last = LastResult {
             letter: Some(letter),
             hits,
@@ -254,6 +268,7 @@ pub async fn search(
 
         Ok(SearchResponse {
             total,
+            total_size,
             took_ms,
             rows,
             sort_skipped,
