@@ -18,6 +18,13 @@
 use std::thread;
 
 use crate::mft::{filetime_to_unix, Entry, Index};
+use crate::terms::{self, Term};
+
+/// Whether a term is a plain substring, which the arena scan has already
+/// verified exactly — re-checking it would be wasted work.
+fn is_plain(term: &Term) -> bool {
+    matches!(term, Term::Contains(_))
+}
 
 /// Byte that separates names in the arena; illegal inside an NTFS filename.
 const SEPARATOR: u8 = b'\n';
@@ -205,6 +212,49 @@ impl SearchIndex {
         hits
     }
 
+    /// The lowercase form of one entry's name, straight out of the arena.
+    ///
+    /// Free: it was built at scan time, so verifying extra query terms costs no
+    /// allocation at all.
+    fn lower_name(&self, position: usize) -> &str {
+        let Some(&start) = self.starts.get(position) else {
+            return "";
+        };
+        let end = self.name_end(position);
+        self.haystack.get(start as usize..end).unwrap_or("")
+    }
+
+    /// Match a parsed query: every term must be satisfied, in any order.
+    ///
+    /// One term is scanned for across the whole arena — the longest literal run
+    /// available, because that is the most selective — and the rest are checked
+    /// against the handful of names that survive. A query with nothing literal
+    /// in it (`*`, `?`) has to fall back to testing everything.
+    fn match_terms(&self, terms: &[Term]) -> Vec<Hit> {
+        if terms.is_empty() {
+            return (0..self.starts.len() as u32).collect();
+        }
+
+        let anchor = terms
+            .iter()
+            .filter_map(Term::anchor)
+            .max_by_key(|literal| literal.len());
+
+        let mut hits = match anchor {
+            Some(literal) if !literal.is_empty() => self.search(literal),
+            _ => (0..self.starts.len() as u32).collect(),
+        };
+
+        if terms.len() > 1 || anchor.is_none_or(str::is_empty) || !is_plain(&terms[0]) {
+            hits.retain(|hit| {
+                let name = self.lower_name(*hit as usize);
+                terms.iter().all(|term| term.matches(name))
+            });
+        }
+
+        hits
+    }
+
     /// Run a full query: text match, path match, filters and sorting.
     pub fn run(&self, index: &Index, query: &Query) -> Vec<Hit> {
         let text = query.text.trim();
@@ -214,7 +264,7 @@ impl SearchIndex {
         // usually a handful — get their full path built and checked.
         let (needle, path_needle) = split_path_query(text);
 
-        let mut hits = self.search(needle);
+        let mut hits = self.match_terms(&terms::parse(needle));
 
         if let Some(path_needle) = path_needle {
             // Paths are built with backslashes, but people type either slash,
@@ -291,11 +341,14 @@ impl SearchIndex {
     }
 }
 
-/// Split `users\pc\rep` into the name needle (`rep`) and the whole string,
-/// which the path check then has to contain.
+/// Split `users\pc\rep` into the name part (`rep`) and the folder part
+/// (`users\pc`).
+///
+/// A trailing separator — `belgeler\` — means "everything in that folder", so
+/// the name part comes back empty and matches all.
 fn split_path_query(text: &str) -> (&str, Option<&str>) {
     match text.rfind(['\\', '/']) {
-        Some(cut) => (&text[cut + 1..], Some(text)),
+        Some(cut) => (&text[cut + 1..], Some(&text[..cut])),
         None => (text, None),
     }
 }
@@ -510,6 +563,98 @@ mod tests {
         assert_eq!(
             names_of(&index, &search.run(&index, &with_slash)),
             vec!["rapor.log"]
+        );
+    }
+
+    #[test]
+    fn several_words_all_have_to_match() {
+        let index = index_from_names(&[
+            "2026 yillik rapor.pdf",
+            "rapor taslak.docx",
+            "yillik ozet.pdf",
+            "baska.txt",
+        ]);
+        let search = SearchIndex::build(&index);
+
+        let both = Query {
+            text: "rapor pdf".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            names_of(&index, &search.run(&index, &both)),
+            vec!["2026 yillik rapor.pdf"]
+        );
+
+        // Order is irrelevant.
+        let reversed = Query {
+            text: "pdf rapor".into(),
+            ..Default::default()
+        };
+        assert_eq!(search.run(&index, &reversed).len(), 1);
+
+        // And a quoted phrase keeps its space.
+        let phrase = Query {
+            text: "\"yillik rapor\"".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            names_of(&index, &search.run(&index, &phrase)),
+            vec!["2026 yillik rapor.pdf"]
+        );
+    }
+
+    #[test]
+    fn wildcards_work_through_a_query() {
+        let index = index_from_names(&["rapor.pdf", "rapor.pdf.bak", "notlar.txt", "rapor1.txt"]);
+        let search = SearchIndex::build(&index);
+
+        let ext = Query {
+            text: "*.pdf".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            names_of(&index, &search.run(&index, &ext)),
+            vec!["rapor.pdf"]
+        );
+
+        let one_char = Query {
+            text: "rapor?.txt".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            names_of(&index, &search.run(&index, &one_char)),
+            vec!["rapor1.txt"]
+        );
+    }
+
+    #[test]
+    fn a_pattern_with_nothing_literal_still_works() {
+        // No literal run to scan for, so every name has to be tested.
+        let index = index_from_names(&["a", "bb", "ccc"]);
+        let search = SearchIndex::build(&index);
+
+        let two_chars = Query {
+            text: "??".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            names_of(&index, &search.run(&index, &two_chars)),
+            vec!["bb"]
+        );
+    }
+
+    #[test]
+    fn words_and_wildcards_combine_with_a_path_scope() {
+        let index = sample_tree();
+        let search = SearchIndex::build(&index);
+
+        let scoped = Query {
+            text: r"belgeler\*.docx".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            names_of(&index, &search.run(&index, &scoped)),
+            vec!["rapor.docx"]
         );
     }
 

@@ -143,12 +143,31 @@ name contains the needle twice is still reported once.
 
 That brings a query to **3–12 ms**.
 
+### Several words, and wildcards
+
+`setup exe` should find a name containing both, in any order, and `*.dll` should
+mean what everyone expects. The query is split on whitespace — quotes put a
+phrase back together — and every term has to match.
+
+Testing every term against every name would undo the whole point of the arena,
+so only one term is scanned for: the **longest literal run** anywhere in the
+query, because that is the most selective thing available. `*.dll` scans for
+`.dll`; `*yillik*rapor*` scans for `yillik`. The few names that come back are
+then checked against the remaining terms, using the lowercase copy already in
+the arena, so the check costs no allocation.
+
+A query with nothing literal in it — `*`, `??` — has no anchor and falls back to
+testing every name. That is the slow path, and it is the right trade: it is also
+the rarest.
+
 ### Path queries
 
 Matching against full paths would mean building a million strings. Instead a
-query containing a separator is split: the last segment is matched against the
-name arena as usual, and only the survivors — usually a handful — have their path
-built and checked against the whole query.
+query containing a separator is split in two: what follows the last separator is
+matched against the name arena as usual, and what precedes it narrows the
+folder. Only the survivors of the name match — usually a handful — have their
+path built, and the folder half is compared against the *containing folder*
+rather than the whole path, so a file's own name cannot accidentally satisfy it.
 
 ### Sorting
 

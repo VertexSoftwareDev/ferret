@@ -60,7 +60,7 @@ const I18N = {
     // Ferret accepts either slash in a path query, and the forward one keeps
     // this string free of escapes.
     emptyHint:
-      'Yazımı kontrol et, ya da filtreleri gevşet. Bir klasörün içinde aramak için eğik çizgi kullan: belgeler/rapor',
+      'Her kelime eşleşmeli. Joker karakter için *.pdf, klasör içinde aramak için belgeler/rapor, boşluklu ad için "yıllık rapor" dene.',
     emptyFiltered: 'Filtreler bu sorguda her şeyi eledi.',
 
     sortSkipped: 'Sonuç kümesi çok büyük olduğu için sıralama uygulanmadı.',
@@ -132,7 +132,7 @@ const I18N = {
 
     emptyTitle: (query) => `No results for “${query}”`,
     emptyHint:
-      'Check the spelling, or loosen the filters. To search inside a folder, use a slash: documents/report',
+      'Every word has to match. Try *.pdf for a wildcard, documents/report to search inside a folder, or "annual report" for a name with a space.',
     emptyFiltered: 'The filters ruled out everything this query matched.',
 
     sortSkipped: 'Too many results to sort, so the order is as found.',

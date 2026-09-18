@@ -12,7 +12,7 @@ use std::io::{self, Write};
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
-use ferret_core::{human_size, scan_with_progress, Index, ScanOptions, SearchIndex};
+use ferret_core::{human_size, scan_with_progress, Index, Query, ScanOptions, SearchIndex};
 
 /// Queries the benchmark runs; a mix of common, rare and no-hit needles.
 const BENCH_QUERIES: &[&str] = &["a", "e", "exe", "dll", "report", "setup", "zzqqxx"];
@@ -137,8 +137,14 @@ fn cmd_find(letter: char, needle: &str, options: ScanOptions) -> io::Result<()> 
     print_summary(&index);
     let search = SearchIndex::build(&index);
 
+    // The full query path, so several words, wildcards and folder scoping all
+    // behave here exactly as they do in the app.
+    let query = Query {
+        text: needle.to_string(),
+        ..Default::default()
+    };
     let started = Instant::now();
-    let hits = search.search(needle);
+    let hits = search.run(&index, &query);
     let elapsed = started.elapsed();
 
     println!();

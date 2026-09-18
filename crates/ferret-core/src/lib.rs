@@ -16,6 +16,7 @@ pub mod mft;
 pub mod record;
 pub mod runs;
 pub mod search;
+pub mod terms;
 pub mod volume;
 
 pub use mft::{
