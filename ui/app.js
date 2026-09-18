@@ -65,6 +65,8 @@ const state = {
   searchToken: 0,
   needle: '',
   scanning: false,
+  /** Drive chosen in a previous run, restored before the first search. */
+  preferredDrive: '',
 };
 
 /* ------------------------------------------------------------------ *
@@ -153,6 +155,63 @@ function applyLanguage(code) {
   refreshVolumeLine();
   refreshCount();
   render();
+}
+
+/* ------------------------------------------------------------------ *
+ * Remembered preferences
+ * ------------------------------------------------------------------ */
+
+const PREFS_KEY = 'ferret-prefs';
+
+/**
+ * Read and write the handful of choices worth surviving a restart.
+ *
+ * Deliberately not the query itself: reopening Ferret to yesterday's search
+ * would be a surprise, and the box is where the eye goes first anyway.
+ */
+function loadPrefs() {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function savePrefs() {
+  try {
+    localStorage.setItem(
+      PREFS_KEY,
+      JSON.stringify({
+        drive: state.letter,
+        sortBy: state.sortBy,
+        descending: state.descending,
+        filesOnly: el.filters.files.checked,
+        dirsOnly: el.filters.dirs.checked,
+        skipHidden: el.filters.hidden.checked,
+        minSize: el.filters.size.value,
+      }),
+    );
+  } catch {
+    /* storage can be blocked; the choices still hold for this session */
+  }
+}
+
+/** Put the saved choices back on screen, before the first search runs. */
+function restorePrefs() {
+  const prefs = loadPrefs();
+
+  if (prefs.sortBy) {
+    state.sortBy = prefs.sortBy;
+    state.descending = Boolean(prefs.descending);
+    const header = document.querySelector(`.th[data-sort="${CSS.escape(prefs.sortBy)}"]`);
+    if (header) header.dataset.dir = state.descending ? 'desc' : 'asc';
+  }
+  if (typeof prefs.filesOnly === 'boolean') el.filters.files.checked = prefs.filesOnly;
+  if (typeof prefs.dirsOnly === 'boolean') el.filters.dirs.checked = prefs.dirsOnly;
+  if (typeof prefs.skipHidden === 'boolean') el.filters.hidden.checked = prefs.skipHidden;
+  if (typeof prefs.minSize === 'string') el.filters.size.value = prefs.minSize;
+  if (typeof prefs.drive === 'string') state.preferredDrive = prefs.drive;
 }
 
 /* ------------------------------------------------------------------ *
@@ -375,8 +434,9 @@ async function loadVolumes() {
     .map((v) => `<option value="${v.letter}">${v.letter}:</option>`)
     .join('');
 
+  const remembered = volumes.find((v) => v.letter === state.preferredDrive);
   const indexed = volumes.find((v) => v.indexed);
-  const preferred = indexed || volumes.find((v) => v.letter === 'C') || volumes[0];
+  const preferred = remembered || indexed || volumes.find((v) => v.letter === 'C') || volumes[0];
   if (!preferred) {
     showOverlay(t.noVolumeTitle, t.noVolumeDetail);
     return;
@@ -600,6 +660,7 @@ el.query.addEventListener('input', scheduleSearch);
 
 el.drive.addEventListener('change', async () => {
   state.letter = el.drive.value;
+  savePrefs();
   const volumes = await call('list_volumes');
   const info = volumes.find((v) => v.letter === state.letter);
   if (info && info.indexed) {
@@ -627,6 +688,7 @@ for (const input of Object.values(el.filters)) {
     // other rather than silently returning nothing.
     if (input === el.filters.files && input.checked) el.filters.dirs.checked = false;
     if (input === el.filters.dirs && input.checked) el.filters.files.checked = false;
+    savePrefs();
     runSearch();
   });
 }
@@ -642,6 +704,7 @@ document.querySelectorAll('.th[data-sort]').forEach((th) => {
     }
     document.querySelectorAll('.th').forEach((other) => delete other.dataset.dir);
     th.dataset.dir = state.descending ? 'desc' : 'asc';
+    savePrefs();
     runSearch();
   });
 });
@@ -841,6 +904,7 @@ function mockCall(command, args) {
 
 initTheme();
 applyLanguage(lang);
+restorePrefs();
 el.query.focus();
 
 loadVolumes().catch((err) => {
