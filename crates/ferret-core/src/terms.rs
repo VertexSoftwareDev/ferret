@@ -7,6 +7,10 @@
 //! Splitting on spaces has one cost: a file with a space in its name can no
 //! longer be found by typing that space. Quoting it — `"annual report"` — asks
 //! for the phrase back.
+//!
+//! Everything a match needs is worked out once, at parse time. A wildcard query
+//! can be tested against a hundred thousand candidate names, so a matcher that
+//! allocated per call would cost more than the arena scan that found them.
 
 /// One condition a name has to satisfy. All of them must, in any order.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,52 +42,52 @@ impl Term {
     }
 }
 
-/// A `*`/`?` pattern, pre-split into the literal runs between its wildcards.
+/// The shapes worth recognising, because almost every real wildcard query is
+/// one of them and none of them need a backtracking matcher.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Shape {
+    /// `*text`
+    EndsWith(String),
+    /// `text*`
+    StartsWith(String),
+    /// `*text*`
+    Contains(String),
+    /// Anything else: run the general matcher.
+    General,
+}
+
+/// A compiled `*`/`?` pattern.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Wildcard {
-    /// Literal runs, in order. Empty strings mean adjacent wildcards.
-    parts: Vec<String>,
-    /// Must the first part sit at the very start of the name?
-    anchored_start: bool,
-    /// Must the last part sit at the very end?
-    anchored_end: bool,
-    /// Positions of `?`, which consume exactly one character each.
-    single: Vec<usize>,
+    /// The pattern as characters, ready to match without re-parsing.
+    pattern: Vec<char>,
+    /// The same as bytes, when the pattern is pure ASCII — which lets an ASCII
+    /// name be matched without turning it into a `Vec<char>` first.
+    ascii: Option<Vec<u8>>,
+    /// Literal runs between the wildcards, longest first, for [`Term::anchor`].
+    literals: Vec<String>,
+    shape: Shape,
 }
 
 impl Wildcard {
-    /// `?` is handled by matching lengths rather than by building a state
-    /// machine: it is rare in practice, and a character-by-character walk is
-    /// easy to be sure of.
     pub fn matches(&self, haystack: &str) -> bool {
-        matches_pattern(&self.pattern_chars(), haystack)
-    }
-
-    fn pattern_chars(&self) -> Vec<char> {
-        // Reassemble the original pattern; cheap, and keeps one matcher.
-        let mut out = Vec::new();
-        for (i, part) in self.parts.iter().enumerate() {
-            if i > 0 {
-                out.push('*');
-            }
-            out.extend(part.chars());
+        match &self.shape {
+            Shape::EndsWith(text) => haystack.ends_with(text.as_str()),
+            Shape::StartsWith(text) => haystack.starts_with(text.as_str()),
+            Shape::Contains(text) => haystack.contains(text.as_str()),
+            Shape::General => match &self.ascii {
+                // The common case: neither side needs a character vector.
+                Some(pattern) if haystack.is_ascii() => matches_bytes(pattern, haystack.as_bytes()),
+                _ => {
+                    let text: Vec<char> = haystack.chars().collect();
+                    matches_chars(&self.pattern, &text)
+                }
+            },
         }
-        if !self.anchored_start {
-            out.insert(0, '*');
-        }
-        if !self.anchored_end {
-            out.push('*');
-        }
-        for _ in &self.single {}
-        out
     }
 
     pub fn longest_literal(&self) -> Option<&str> {
-        self.parts
-            .iter()
-            .filter(|part| !part.is_empty() && !part.contains('?'))
-            .max_by_key(|part| part.len())
-            .map(String::as_str)
+        self.literals.first().map(String::as_str)
     }
 }
 
@@ -129,37 +133,56 @@ pub fn parse(text: &str) -> Vec<Term> {
 }
 
 fn compile(token: &str) -> Wildcard {
-    let anchored_start = !token.starts_with('*');
-    let anchored_end = !token.ends_with('*');
-    let parts: Vec<String> = token.split('*').map(str::to_string).collect();
-    let single = token
-        .char_indices()
-        .filter(|(_, c)| *c == '?')
-        .map(|(i, _)| i)
+    let pattern: Vec<char> = token.chars().collect();
+
+    let mut literals: Vec<String> = token
+        .split(['*', '?'])
+        .filter(|part| !part.is_empty())
+        .map(str::to_string)
         .collect();
+    literals.sort_by_key(|part| std::cmp::Reverse(part.len()));
 
     Wildcard {
-        parts,
-        anchored_start,
-        anchored_end,
-        single,
+        shape: shape_of(token),
+        ascii: token.is_ascii().then(|| token.bytes().collect()),
+        pattern,
+        literals,
     }
 }
 
-/// Classic wildcard matching with backtracking.
+/// Recognise the three shapes that need no backtracking at all.
+fn shape_of(token: &str) -> Shape {
+    // A `?` anywhere, or a `*` in the middle, means the general matcher.
+    if token.contains('?') {
+        return Shape::General;
+    }
+    let inner = token.trim_matches('*');
+    if inner.is_empty() || inner.contains('*') {
+        return Shape::General;
+    }
+
+    match (token.starts_with('*'), token.ends_with('*')) {
+        (true, true) => Shape::Contains(inner.to_string()),
+        (true, false) => Shape::EndsWith(inner.to_string()),
+        (false, true) => Shape::StartsWith(inner.to_string()),
+        // No star at all cannot happen here, but an exact match is still right.
+        (false, false) => Shape::General,
+    }
+}
+
+/// Classic wildcard matching with backtracking, over bytes.
 ///
 /// Iterative rather than recursive: a pathological pattern like `*a*a*a*a*` on
 /// a long name should get slow, not blow the stack.
-fn matches_pattern(pattern: &[char], text: &str) -> bool {
-    let text: Vec<char> = text.chars().collect();
+fn matches_bytes(pattern: &[u8], text: &[u8]) -> bool {
     let (mut p, mut s) = (0usize, 0usize);
     let (mut star, mut resume) = (None, 0usize);
 
     while s < text.len() {
-        if p < pattern.len() && (pattern[p] == '?' || pattern[p] == text[s]) {
+        if p < pattern.len() && (pattern[p] == b'?' || pattern[p] == text[s]) {
             p += 1;
             s += 1;
-        } else if p < pattern.len() && pattern[p] == '*' {
+        } else if p < pattern.len() && pattern[p] == b'*' {
             // Remember where to come back to if the rest fails to line up.
             star = Some(p);
             resume = s;
@@ -174,10 +197,32 @@ fn matches_pattern(pattern: &[char], text: &str) -> bool {
         }
     }
 
-    while p < pattern.len() && pattern[p] == '*' {
-        p += 1;
+    pattern[p..].iter().all(|c| *c == b'*')
+}
+
+/// The same algorithm for names that are not ASCII.
+fn matches_chars(pattern: &[char], text: &[char]) -> bool {
+    let (mut p, mut s) = (0usize, 0usize);
+    let (mut star, mut resume) = (None, 0usize);
+
+    while s < text.len() {
+        if p < pattern.len() && (pattern[p] == '?' || pattern[p] == text[s]) {
+            p += 1;
+            s += 1;
+        } else if p < pattern.len() && pattern[p] == '*' {
+            star = Some(p);
+            resume = s;
+            p += 1;
+        } else if let Some(at) = star {
+            p = at + 1;
+            resume += 1;
+            s = resume;
+        } else {
+            return false;
+        }
     }
-    p == pattern.len()
+
+    pattern[p..].iter().all(|c| *c == '*')
 }
 
 #[cfg(test)]
@@ -272,5 +317,68 @@ mod tests {
     fn wildcards_are_case_insensitive_through_parsing() {
         let terms = parse("*.PDF");
         assert!(terms[0].matches("rapor.pdf"));
+    }
+
+    #[test]
+    fn non_ascii_names_take_the_character_path() {
+        let terms = parse("*rapor*");
+        assert!(terms[0].matches("çalışma raporu.docx"));
+        assert!(!terms[0].matches("çalışma özeti.docx"));
+
+        // A non-ASCII pattern too.
+        let turkish = parse("*özet*");
+        assert!(turkish[0].matches("yıllık özet.pdf"));
+        assert!(!turkish[0].matches("yıllık rapor.pdf"));
+    }
+
+    /// The shortcuts must agree with the general matcher, always.
+    #[test]
+    fn the_fast_shapes_agree_with_the_general_matcher() {
+        let names = [
+            "rapor.pdf",
+            ".pdf",
+            "rapor.pdf.bak",
+            "pdf",
+            "",
+            "a",
+            "rapor",
+            "çalışma raporu.pdf",
+        ];
+        for token in ["*.pdf", "rapor*", "*rapor*", "*", "**"] {
+            let compiled = compile(token);
+            let general = Wildcard {
+                shape: Shape::General,
+                ..compiled.clone()
+            };
+            for name in names {
+                assert_eq!(
+                    compiled.matches(name),
+                    general.matches(name),
+                    "'{token}' vs '{name}'"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_byte_and_character_matchers_agree() {
+        for token in ["*.pdf", "a*b", "rapor?.txt", "*a*a*b", "?", "*"] {
+            let compiled = compile(token);
+            let pattern: Vec<char> = token.chars().collect();
+            for name in ["rapor.pdf", "ab", "axxb", "rapor1.txt", "aaab", "x", ""] {
+                let chars: Vec<char> = name.chars().collect();
+                assert_eq!(
+                    matches_bytes(token.as_bytes(), name.as_bytes()),
+                    matches_chars(&pattern, &chars),
+                    "'{token}' vs '{name}'"
+                );
+                // And the compiled form agrees with both.
+                assert_eq!(
+                    compiled.matches(name),
+                    matches_chars(&pattern, &chars),
+                    "compiled '{token}' vs '{name}'"
+                );
+            }
+        }
     }
 }
