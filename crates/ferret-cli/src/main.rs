@@ -1,11 +1,11 @@
 //! Development harness for the Ferret engine.
 //!
-//! This is not the product — the product is the desktop app that comes later.
-//! It exists so the NTFS scanner and the search index can be exercised and
-//! timed against a real disk, which needs an elevated terminal.
+//! This is not the product — the product is the desktop app. It exists so the
+//! NTFS scanner and the search index can be exercised and timed against a real
+//! disk, which needs an elevated terminal.
 //!
-//!     ferret scan C
-//!     ferret find C rapor
+//!     ferret scan  C
+//!     ferret find  C report
 //!     ferret bench C
 
 use std::io;
@@ -15,7 +15,7 @@ use std::time::Instant;
 use ferret_core::{human_size, scan_with, Index, ScanOptions, SearchIndex};
 
 /// Queries the benchmark runs; a mix of common, rare and no-hit needles.
-const BENCH_QUERIES: &[&str] = &["a", "e", "exe", "dll", "rapor", "setup", "zzqqxx"];
+const BENCH_QUERIES: &[&str] = &["a", "e", "exe", "dll", "report", "setup", "zzqqxx"];
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -33,7 +33,7 @@ fn main() -> ExitCode {
             match positional.get(2) {
                 Some(needle) => cmd_find(letter, needle, options),
                 None => {
-                    eprintln!("kullanim: ferret find <surucu> <aranacak metin>");
+                    eprintln!("usage: ferret find <drive> <text>");
                     return ExitCode::from(2);
                 }
             }
@@ -43,7 +43,7 @@ fn main() -> ExitCode {
             return ExitCode::SUCCESS;
         }
         other => {
-            eprintln!("bilinmeyen komut: {other}");
+            eprintln!("unknown command: {other}");
             print_usage();
             return ExitCode::from(2);
         }
@@ -59,15 +59,15 @@ fn main() -> ExitCode {
 }
 
 fn print_usage() {
-    println!("Ferret - NTFS dosya indeksi (gelistirme araci)");
+    println!("Ferret — NTFS file index (development harness)");
     println!();
-    println!("  ferret scan  [surucu]           Diski tara ve ozet ver");
-    println!("  ferret find  [surucu] <metin>   Tara ve isimde arama yap");
-    println!("  ferret bench [surucu]           Arama hizini olc");
+    println!("  ferret scan  [drive]          Index a volume and summarise it");
+    println!("  ferret find  [drive] <text>   Index, then search file names");
+    println!("  ferret bench [drive]          Measure query times");
     println!();
-    println!("  --system                        NTFS ic dosyalarini da dahil et");
+    println!("  --system                      Include NTFS's own metafiles");
     println!();
-    println!("Surucu verilmezse C kullanilir. Yonetici yetkisi gerekir.");
+    println!("Defaults to C. Administrator rights are required.");
 }
 
 fn drive_letter(arg: Option<&&String>) -> char {
@@ -81,13 +81,13 @@ fn cmd_scan(letter: char, options: ScanOptions) -> io::Result<()> {
     let built = Instant::now();
     let search = SearchIndex::build(&index);
     println!(
-        "Arama indeksi     : {} ({:.2} sn'de kuruldu)",
+        "search index    : {} (built in {:.2} s)",
         human_size(search.memory_bytes() as u64),
         built.elapsed().as_secs_f64()
     );
 
     println!();
-    println!("Ornek yollar:");
+    println!("Sample paths:");
     for (position, entry) in index
         .entries()
         .iter()
@@ -97,7 +97,7 @@ fn cmd_scan(letter: char, options: ScanOptions) -> io::Result<()> {
     {
         match index.full_path(position) {
             Some(path) => println!("  {path}  ({})", human_size(entry.size)),
-            None => println!("  <yol kurulamadi> {}", index.name(position)),
+            None => println!("  <no path> {}", index.name(position)),
         }
     }
 
@@ -115,20 +115,20 @@ fn cmd_find(letter: char, needle: &str, options: ScanOptions) -> io::Result<()> 
 
     println!();
     println!(
-        "\"{needle}\" icin {} sonuc, {:.2} ms icinde suzuldu",
+        "{} results for \"{needle}\", filtered in {:.2} ms",
         hits.len(),
         elapsed.as_secs_f64() * 1000.0
     );
     for hit in hits.iter().take(20) {
         let entry = &index.entries()[*hit as usize];
         match index.full_path(*hit as usize) {
-            Some(path) if entry.is_dir() => println!("  [klasor] {path}"),
+            Some(path) if entry.is_dir() => println!("  [dir] {path}"),
             Some(path) => println!("  {path}  ({})", human_size(entry.size)),
-            None => println!("  <yol kurulamadi> {}", index.name(*hit as usize)),
+            None => println!("  <no path> {}", index.name(*hit as usize)),
         }
     }
     if hits.len() > 20 {
-        println!("  ... ve {} tane daha", hits.len() - 20);
+        println!("  … and {} more", hits.len() - 20);
     }
 
     Ok(())
@@ -143,17 +143,17 @@ fn cmd_bench(letter: char, options: ScanOptions) -> io::Result<()> {
     let build_time = started.elapsed();
 
     println!(
-        "Arama indeksi     : {} ({:.2} sn)",
+        "search index    : {} ({:.2} s)",
         human_size(search.memory_bytes() as u64),
         build_time.as_secs_f64()
     );
     println!();
-    println!("Sorgu       Sonuc        En iyi      Ortalama");
+    println!("query        results        best      average");
     println!("-------------------------------------------------");
 
     for query in BENCH_QUERIES {
-        // Several runs: the first one pulls the arena into cache, later ones
-        // show the speed a user typing in the box would actually feel.
+        // Several runs: the first pulls the arena into cache, the later ones
+        // show the speed someone typing in the box would actually feel.
         let mut best = f64::MAX;
         let mut total = 0.0;
         let mut hits = 0usize;
@@ -182,41 +182,41 @@ fn cmd_bench(letter: char, options: ScanOptions) -> io::Result<()> {
 
 fn print_summary(index: &Index) {
     let s = &index.stats;
-    println!("Surucu            : {}:", index.letter);
-    println!("MFT boyutu        : {}", human_size(s.mft_bytes));
-    println!("Taranan kayit     : {}", s.records_total);
-    println!("Kullanimda        : {}", s.records_in_use);
-    println!("  dosya           : {}", s.files);
-    println!("  klasor          : {}", s.dirs);
+    println!("drive           : {}:", index.letter);
+    println!("MFT size        : {}", human_size(s.mft_bytes));
+    println!("records scanned : {}", s.records_total);
+    println!("in use          : {}", s.records_in_use);
+    println!("  files         : {}", s.files);
+    println!("  folders       : {}", s.dirs);
     if s.records_system > 0 {
-        println!("  (atlanan sistem : {})", s.records_system);
+        println!("  (metafiles    : {})", s.records_system);
     }
     if s.records_orphaned > 0 {
-        println!("  (yolsuz kayit   : {})", s.records_orphaned);
+        println!("  (no path      : {})", s.records_orphaned);
     }
     if s.records_damaged > 0 {
-        println!("Atlanan (bozuk)   : {}", s.records_damaged);
+        println!("damaged, skipped: {}", s.records_damaged);
     }
     println!(
-        "Bellek            : {}",
+        "memory          : {}",
         human_size(index.memory_bytes() as u64)
     );
-    println!("Disk okuma suresi : {:.2} sn", s.read_time.as_secs_f64());
-    println!("Tarama suresi     : {:.2} sn", s.total_time.as_secs_f64());
+    println!("disk read       : {:.2} s", s.read_time.as_secs_f64());
+    println!("scan            : {:.2} s", s.total_time.as_secs_f64());
     if s.total_time.as_secs_f64() > 0.0 {
         let per_sec = s.records_total as f64 / s.total_time.as_secs_f64();
-        println!("Hiz               : {per_sec:.0} kayit/sn");
+        println!("rate            : {per_sec:.0} records/s");
     }
 }
 
 fn report_error(err: &io::Error) {
     eprintln!();
     if err.kind() == io::ErrorKind::PermissionDenied {
-        eprintln!("HATA: Erisim reddedildi.");
+        eprintln!("Access denied.");
         eprintln!();
-        eprintln!("Ham disk okumak yonetici yetkisi gerektirir.");
-        eprintln!("Terminali 'Yonetici olarak calistir' ile acip tekrar dene.");
+        eprintln!("Reading a raw volume requires administrator rights.");
+        eprintln!("Open the terminal with \"Run as administrator\" and try again.");
     } else {
-        eprintln!("HATA: {err}");
+        eprintln!("Error: {err}");
     }
 }

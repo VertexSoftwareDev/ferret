@@ -425,7 +425,7 @@ pub fn scan_with(letter: char, options: ScanOptions) -> io::Result<Index> {
     if record_size == 0 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "kayit boyutu sifir",
+            "the volume reports a zero-byte MFT record size",
         ));
     }
 
@@ -763,11 +763,15 @@ fn read_mft_runs(volume: &mut Volume) -> io::Result<Vec<Run>> {
     if !record::apply_fixups(&mut raw, sector) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "$MFT kayit 0 okunamadi (imza veya fixup hatali)",
+            "could not read $MFT record 0: bad signature or fixups",
         ));
     }
-    let header = record::parse_header(&raw)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "$MFT kayit basligi bozuk"))?;
+    let header = record::parse_header(&raw).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "the $MFT record header is damaged",
+        )
+    })?;
 
     for attr in record::attributes(&raw, &header) {
         if attr.kind == ATTR_DATA && attr.name_len == 0 {
@@ -783,7 +787,7 @@ fn read_mft_runs(volume: &mut Volume) -> io::Result<Vec<Run>> {
 
     Err(io::Error::new(
         io::ErrorKind::InvalidData,
-        "$MFT icinde $DATA calisma listesi bulunamadi",
+        "no $DATA run list found in $MFT",
     ))
 }
 

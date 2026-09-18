@@ -34,5 +34,5 @@ fn main() {
             commands::restart_elevated,
         ])
         .run(tauri::generate_context!())
-        .expect("Ferret penceresi baslatilamadi");
+        .expect("could not start the Ferret window");
 }

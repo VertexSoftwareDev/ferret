@@ -49,7 +49,7 @@ impl Volume {
         if !letter.is_ascii_alphabetic() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!("gecersiz surucu harfi: {letter}"),
+                format!("not a drive letter: {letter}"),
             ));
         }
 
@@ -65,7 +65,7 @@ impl Volume {
         if &boot[bpb::OEM_ID..bpb::OEM_ID + 8] != b"NTFS    " {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("{letter}: NTFS degil (Ferret su an yalnizca NTFS okur)"),
+                format!("{letter}: is not NTFS; Ferret can only read NTFS volumes"),
             ));
         }
 
@@ -74,7 +74,7 @@ impl Volume {
         if bytes_per_sector == 0 || sectors_per_cluster == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                "bozuk onyukleme sektoru: sifir sektor/kume boyutu",
+                "damaged boot sector: zero sector or cluster size",
             ));
         }
 

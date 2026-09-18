@@ -9,31 +9,31 @@ table of contents — the NTFS **master file table** — directly off the raw
 volume. One sequential pass, and the whole disk is in memory.
 
 ```
-  dosya            : 1550188
-  klasor           : 295942
-  tarama           : 7.99 sn
-  arama indeksi    : 0.10 sn
-  bellek           : 162.1 MB
+  files            : 1559745
+  folders          : 297737
+  scan             : 6.90 s
+  search index     : 0.10 s
+  memory           : 163.1 MB
 
-  sorgu                                 sonuc       sure
-  a                                   1105004    12.47 ms
-  exe                                   17038     4.23 ms
-  setup                                  3170     6.31 ms
-  windows\system32\kernel                   1     5.10 ms
-  zzqqxxnope                                0     3.67 ms
+  query                               results       time
+  a                                   1112768    15.27 ms
+  exe                                   16902     4.64 ms
+  setup                                  3435     6.52 ms
+  windows\system32\kernel                   1     6.97 ms
+  zzqqxxnope                                0     3.69 ms
 
-  yol dogrulama    : 200/200 yol diskte bulundu
+  path check       : 200/200 paths exist on disk
 
-  canli guncelleme
-      olusturulan 25 dosyadan bulunan : 25
-      silindikten sonra kalan             : 0
+  live updates
+      created and then found       : 25 / 25
+      still indexed after deletion : 0
 
-  SONUC: gecti
+  RESULT: passed
 ```
 
-That is real output from `ferret-app.exe --selftest` on a 1.8-million-file
+That is real output from `ferret-app.exe --selftest` on a 1.8-million-record
 volume. It checks that every reconstructed path actually exists on disk, and
-that files created and deleted while it runs appear and disappear from the
+that files created and deleted while it runs appear in and disappear from the
 index on their own.
 
 ## Screenshots
@@ -148,8 +148,8 @@ Working and measured on real volumes. Known limits:
 - Renaming a file appends its new name to the name arena and leaves the old
   bytes behind; a long session with heavy churn slowly grows memory until the
   next full scan.
-- The command-line harness prints in Turkish; the application itself is
-  bilingual.
+- Sorting is skipped past 200 000 results: at that size the list is not
+  something anyone reads in order, and the sort would cost a visible pause.
 
 ## Licence
 

@@ -147,7 +147,7 @@ pub fn query(volume: &Volume) -> io::Result<JournalInfo> {
         return Err(match err.raw_os_error() {
             Some(1179) | Some(1) => io::Error::new(
                 io::ErrorKind::Unsupported,
-                "bu birimde degisiklik gunlugu (USN journal) kapali",
+                "the change journal is disabled on this volume",
             ),
             _ => err,
         });
@@ -155,7 +155,7 @@ pub fn query(volume: &Volume) -> io::Result<JournalInfo> {
     if returned < 32 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "USN journal yaniti eksik",
+            "the change journal returned a short reply",
         ));
     }
 
@@ -210,7 +210,7 @@ pub fn read(volume: &Volume, cursor: &mut Cursor) -> io::Result<Vec<Change>> {
             // scrolled out of the circular log: the index must be rebuilt.
             Some(1179) | Some(1181) | Some(1182) => io::Error::new(
                 io::ErrorKind::InvalidData,
-                "degisiklik gunlugu sifirlandi; yeniden tarama gerekiyor",
+                "the change journal was reset; a rescan is needed",
             ),
             _ => err,
         });

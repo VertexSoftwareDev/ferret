@@ -31,17 +31,17 @@ const PATHS_TO_VERIFY: usize = 200;
 
 pub fn run() -> i32 {
     let Some(letter) = first_readable_volume() else {
-        eprintln!("HATA: okunabilir NTFS birimi yok. Yonetici olarak calistir.");
+        eprintln!("Error: no readable NTFS volume. Run as administrator.");
         return 2;
     };
 
-    println!("Ferret kendi kendini test  ·  surucu {letter}:");
+    println!("Ferret self-test  ·  drive {letter}:");
     println!();
 
     let index = match scan_with(letter, ScanOptions::default()) {
         Ok(index) => index,
         Err(err) => {
-            eprintln!("HATA: tarama basarisiz: {err}");
+            eprintln!("Error: the scan failed: {err}");
             return 2;
         }
     };
@@ -52,15 +52,15 @@ pub fn run() -> i32 {
     let mut volume = Volume { index, search };
     let stats = volume.index.stats;
 
-    println!("  dosya            : {}", stats.files);
-    println!("  klasor           : {}", stats.dirs);
+    println!("  files            : {}", stats.files);
+    println!("  folders          : {}", stats.dirs);
     println!(
-        "  tarama           : {:.2} sn",
+        "  scan             : {:.2} s",
         stats.total_time.as_secs_f64()
     );
-    println!("  arama indeksi    : {:.2} sn", build_time.as_secs_f64());
+    println!("  search index     : {:.2} s", build_time.as_secs_f64());
     println!(
-        "  bellek           : {}",
+        "  memory           : {}",
         ferret_core::human_size(volume.memory_bytes() as u64)
     );
     println!();
@@ -68,11 +68,11 @@ pub fn run() -> i32 {
     let mut failures = 0;
 
     if stats.files == 0 {
-        eprintln!("  BASARISIZ: hic dosya bulunamadi");
+        eprintln!("  FAILED: no files found at all");
         failures += 1;
     }
 
-    println!("  {:<32} {:>10} {:>10}", "sorgu", "sonuc", "sure");
+    println!("  {:<32} {:>10} {:>10}", "query", "results", "time");
     for text in QUERIES {
         let query = Query {
             text: (*text).to_string(),
@@ -86,7 +86,7 @@ pub fn run() -> i32 {
 
         // Anything under a tenth of a second still feels instant while typing.
         if ms > 100.0 {
-            eprintln!("  BASARISIZ: '{text}' sorgusu cok yavas ({ms:.1} ms)");
+            eprintln!("  FAILED: the query '{text}' is too slow ({ms:.1} ms)");
             failures += 1;
         }
     }
@@ -122,7 +122,7 @@ pub fn run() -> i32 {
     }
 
     println!(
-        "  yol dogrulama    : {checked}/{} yol diskte bulundu",
+        "  path check       : {checked}/{} paths exist on disk",
         rows.len()
     );
     if !missing.is_empty() {
@@ -130,10 +130,13 @@ pub fn run() -> i32 {
         // a live system; a large share means path reconstruction is broken.
         let ratio = missing.len() as f64 / rows.len().max(1) as f64;
         for path in missing.iter().take(5) {
-            println!("      eksik: {path}");
+            println!("      missing: {path}");
         }
         if ratio > 0.05 {
-            eprintln!("  BASARISIZ: yollarin %{:.0}'i bulunamadi", ratio * 100.0);
+            eprintln!(
+                "  FAILED: {:.0}% of the paths were not found",
+                ratio * 100.0
+            );
             failures += 1;
         }
     }
@@ -141,7 +144,7 @@ pub fn run() -> i32 {
     // Row rendering must never produce a blank name or a path without a drive.
     for row in rows.iter().take(50) {
         if row.name.is_empty() || !row.path.contains(':') {
-            eprintln!("  BASARISIZ: bozuk satir: {row:?}");
+            eprintln!("  FAILED: malformed row: {row:?}");
             failures += 1;
             break;
         }
@@ -152,10 +155,10 @@ pub fn run() -> i32 {
 
     println!();
     if failures == 0 {
-        println!("  SONUC: gecti");
+        println!("  RESULT: passed");
         0
     } else {
-        println!("  SONUC: {failures} kontrol basarisiz");
+        println!("  RESULT: {failures} check(s) failed");
         1
     }
 }
@@ -171,18 +174,18 @@ const LIVE_FILES: usize = 25;
 /// means the journal path works end to end, from `DeviceIoControl` through to a
 /// query hit. The files are removed again, and their disappearance checked too.
 fn live_update_check(volume: &mut crate::state::Volume) -> u32 {
-    println!("  canli guncelleme");
+    println!("  live updates");
 
     let letter = volume.index.letter;
     let Ok(raw) = ferret_core::Volume::open(letter) else {
-        println!("      atlandi: birim acilamadi");
+        println!("      skipped: could not open the volume");
         return 0;
     };
     let mut cursor = match journal::cursor_at_end(&raw) {
         Ok(cursor) => cursor,
         Err(err) => {
             // A volume without a journal is a supported configuration.
-            println!("      atlandi: {err}");
+            println!("      skipped: {err}");
             return 0;
         }
     };
@@ -197,7 +200,7 @@ fn live_update_check(volume: &mut crate::state::Volume) -> u32 {
     );
     let dir = std::env::temp_dir().join(&tag);
     if std::fs::create_dir_all(&dir).is_err() {
-        println!("      atlandi: gecici klasor olusturulamadi");
+        println!("      skipped: could not create a temporary folder");
         return 0;
     }
 
@@ -211,24 +214,24 @@ fn live_update_check(volume: &mut crate::state::Volume) -> u32 {
     let needle = format!("{tag}_");
 
     let created = drain_and_count(volume, &raw, &mut cursor, &needle);
-    println!("      olusturulan {LIVE_FILES} dosyadan bulunan : {created}");
+    println!("      created and then found       : {created} / {LIVE_FILES}");
 
     for i in 0..LIVE_FILES {
         let _ = std::fs::remove_file(dir.join(format!("{tag}_{i}.txt")));
     }
 
     let remaining = drain_and_count(volume, &raw, &mut cursor, &needle);
-    println!("      silindikten sonra kalan             : {remaining}");
+    println!("      still indexed after deletion : {remaining}");
 
     let _ = std::fs::remove_dir_all(&dir);
 
     let mut failures = 0;
     if created < LIVE_FILES {
-        eprintln!("      BASARISIZ: {created}/{LIVE_FILES} dosya indekse islenmedi");
+        eprintln!("      FAILED: only {created}/{LIVE_FILES} files reached the index");
         failures += 1;
     }
     if remaining > 0 {
-        eprintln!("      BASARISIZ: silinen {remaining} dosya hala indekste");
+        eprintln!("      FAILED: {remaining} deleted files are still indexed");
         failures += 1;
     }
     failures
