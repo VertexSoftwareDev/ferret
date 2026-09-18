@@ -36,6 +36,11 @@ volume. It checks that every reconstructed path actually exists on disk, and
 that files created and deleted while it runs appear and disappear from the
 index on their own.
 
+## Screenshots
+
+Not checked in yet — grab them from your own disk, where the file names are real:
+run the app, press `Win+Shift+S`, and drop the images in `docs/`.
+
 ## What it does
 
 - **Indexes a whole NTFS volume in seconds** by parsing `$MFT` rather than

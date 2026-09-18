@@ -117,7 +117,7 @@ pub struct ScanStats {
     pub total_time: Duration,
 }
 
-/// What [`Index::refresh_record`] did.
+/// What [`Index::apply_change`] did.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Refresh {
     /// The entry is different from what it was.
@@ -138,11 +138,6 @@ pub struct Index {
     names: String,
     /// `record number -> position in entries`, or [`NO_ENTRY`].
     by_record: Vec<u32>,
-    /// Where `$MFT` lives on the volume, kept so single records can be re-read
-    /// when the change journal reports them modified.
-    runs: Vec<Run>,
-    bytes_per_record: u32,
-    bytes_per_cluster: u64,
     pub stats: ScanStats,
 }
 
@@ -241,32 +236,6 @@ impl Index {
         true
     }
 
-    /// Physical byte offset of one MFT record, following the `$MFT` run list.
-    ///
-    /// Returns `None` for a record beyond the table, or one inside a sparse
-    /// region — neither has bytes to read.
-    fn record_offset(&self, record: u32) -> Option<u64> {
-        let want = record as u64 * self.bytes_per_record as u64;
-        let mut seen = 0u64;
-
-        for run in &self.runs {
-            let bytes = run.clusters * self.bytes_per_cluster;
-            if want < seen + bytes {
-                let lcn = run.lcn?;
-                return Some(lcn * self.bytes_per_cluster + (want - seen));
-            }
-            seen += bytes;
-        }
-        None
-    }
-
-    /// Re-read one MFT record from the volume and fold it into the index.
-    ///
-    /// This is what makes the change journal cheap: a notification names a
-    /// record, and updating the index costs one 1 KB read rather than a rescan.
-    /// A record that has been freed, has become unreadable, or turns out to be
-    /// an NTFS metafile is marked deleted instead.
-    ///
     /// Fold one change-journal entry into the index.
     ///
     /// Everything but the size comes from the journal entry itself. That is not
@@ -323,36 +292,7 @@ impl Index {
         }
     }
 
-    /// Returns what the update touched.
-    #[allow(dead_code)]
-    pub fn refresh_record(&mut self, volume: &mut Volume, record: u32) -> io::Result<Refresh> {
-        // Names are only ever appended, so the arena growing is an exact signal
-        // that a name was added or changed — which is the only case that forces
-        // the search arena to be rebuilt.
-        let names_before = self.names.len();
-
-        let changed = match self.record_offset(record) {
-            None => self.mark_deleted(record),
-            Some(offset) => {
-                let mut raw = vec![0u8; self.bytes_per_record as usize];
-                volume.read_at(offset, &mut raw)?;
-
-                let sector = volume.bytes_per_sector as usize;
-                match parse_entry(&mut raw, sector, record) {
-                    ParseOutcome::Live(parsed) if !is_system_record(record, &parsed) => {
-                        self.upsert(record, parsed)
-                    }
-                    _ => self.mark_deleted(record),
-                }
-            }
-        };
-
-        Ok(Refresh {
-            changed,
-            names_changed: self.names.len() != names_before,
-        })
-    }
-
+    /// Insert or update one entry. Returns whether anything changed.
     /// Keep the file and directory counts true as entries come and go.
     fn count(&mut self, is_dir: bool, delta: i64) {
         let counter = if is_dir {
@@ -594,9 +534,6 @@ pub fn scan_with(letter: char, options: ScanOptions) -> io::Result<Index> {
         entries,
         names,
         by_record,
-        runs,
-        bytes_per_record: volume.bytes_per_record,
-        bytes_per_cluster: volume.bytes_per_cluster,
         stats,
     })
 }
@@ -923,9 +860,6 @@ pub(crate) mod test_support {
             entries,
             names,
             by_record,
-            runs: Vec::new(),
-            bytes_per_record: 1024,
-            bytes_per_cluster: 4096,
             stats: ScanStats::default(),
         }
     }
@@ -1135,43 +1069,6 @@ mod tests {
         assert!(index.upsert(21, parsed(20, "baska.txt", 7)));
         assert!(!index.entries()[1].is_deleted());
         assert_eq!(index.name(1), "baska.txt");
-    }
-
-    #[test]
-    fn record_offsets_follow_the_run_list() {
-        let mut index = index_from_specs(vec![dir(20, ROOT_RECORD, "Users")]);
-        index.bytes_per_record = 1024;
-        index.bytes_per_cluster = 4096;
-        // Two extents: 2 clusters at 100, then 2 clusters at 500.
-        index.runs = vec![
-            Run {
-                lcn: Some(100),
-                clusters: 2,
-            },
-            Run {
-                lcn: Some(500),
-                clusters: 2,
-            },
-        ];
-
-        // Record 0 sits at the start of the first extent.
-        assert_eq!(index.record_offset(0), Some(100 * 4096));
-        // Record 3 is the last one in the first extent (8 records per extent).
-        assert_eq!(index.record_offset(3), Some(100 * 4096 + 3 * 1024));
-        // Record 8 crosses into the second extent.
-        assert_eq!(index.record_offset(8), Some(500 * 4096));
-        // Past the end of the table there is nothing to read.
-        assert_eq!(index.record_offset(16), None);
-    }
-
-    #[test]
-    fn a_sparse_region_has_no_offset() {
-        let mut index = index_from_specs(vec![dir(20, ROOT_RECORD, "Users")]);
-        index.runs = vec![Run {
-            lcn: None,
-            clusters: 4,
-        }];
-        assert_eq!(index.record_offset(0), None);
     }
 
     #[test]
